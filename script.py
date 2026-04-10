@@ -6,6 +6,8 @@ import random
 import re
 from mathutils import Vector
 
+# https://www.youtube.com/watch?v=jeoJZ8XGJCg
+
 bpy.app.handlers.frame_change_post.clear()
 
 STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
