@@ -34,13 +34,14 @@ def handle_frame(scene):
     timer_start = time.perf_counter()
 
     configs = [
-        #("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100),)),
+        #("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), 0)),
         #("scene2", ()),
         #("scene3", ((180, 180, 180, 180, 180), -2)),
-        #("scene4", ((-180, -180, -180, -180, -180), 2, 0.4)),
+        #("scene4", ((0, 0, 0, 0, 0), 2, 0.4)),
         #("scene5", ((180, 0, 180, 180, 180, 0, 0, 180, 0, 0, 0), 0, 0.4)),
         #("scene6", ((180), 0)),
-        ("scene7", ((180), 0)),
+        #("scene7", ((180), 0, 0.3)),
+        ("scene8", ((), 0, 0.3)),
     ]
 
     ctxs = []
@@ -228,7 +229,36 @@ def handle_scene7(context):
     checks = [
         # check function name,          duration
         #("check_pause",                 40),
-        ("check_dice",                  40),
+        ("check_dice",                  30),
+        ("check_compare_or_spin_wheel", 20),
+        ("check_jump_guy",              11),
+        ("check_reward_or_penalty",     5),
+        ("check_set_quality_by_poke",   10),
+        ("check_pause",                 4),
+        ("check_action_end",            1)
+    ]
+    handle_checks(context, checks, duration_multiplier)
+    handle_dice(context)
+    handle_jump_guy(context)
+    handle_poke_guy(context)
+    handle_closely_look_guy(context)
+    handle_win_guy(context)
+    handle_lost_guy(context)
+    handle_spinning_wheels(context)
+
+def reset_scene8(context, first_time):
+    for tile in find_recursive_list(context, context, "tile_neutral"):
+        start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
+        if first_time:
+            add_quality_bar_to_spinning_wheel(context, tile)
+
+def handle_scene8(context):
+    duration_multiplier = 0.2
+
+    checks = [
+        # check function name,          duration
+        #("check_pause",                 40),
+        ("check_dice",                  25),
         ("check_compare_or_spin_wheel", 20),
         ("check_jump_guy",              11),
         ("check_reward_or_penalty",     5),
@@ -276,7 +306,9 @@ def init(context):
         guy.pop("num_actions_done", None)
         guy.pop("num_penalty", None)
         guy.pop("num_reward", None)
-        get_text_penalty(context).data.body = "0"
+        penalty = get_text_penalty(context)
+        if penalty is not None:
+            penalty.data.body = "0"
         get_text_rewards(context).data.body = "0"
         reset(context)
 
@@ -292,7 +324,7 @@ def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_in
         if guy_got_reward_or_penalty(context):
             poke_guy_prev_tile(context, check_duration_num_frames)
 
-    if (context.frame_current % total_duration_num_frames) == (check_frame_index + check_duration_num_frames/2):
+    if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
         tile_current  = get_tile_at_guy(context)
         tile_previous = get_guy_prev_tile(context)
         penalty_or_reward = get_tile_penalty_or_reward(tile_current)
@@ -310,17 +342,21 @@ def check_pick_up_spinning_wheel(context, total_duration_num_frames, check_frame
 
 def check_dice(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
-        throw_dice(context, check_duration_num_frames)
+        if not disk_has_equal_section_qualities(context):
+            throw_dice(context, check_duration_num_frames)
 
 def check_pause(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     pass
 
+def disk_has_equal_section_qualities(context):
+    disk_sections = get_disk_sections(context, get_tile_at_guy(context))
+    disk_sections.sort(key=lambda s: s.quality, reverse=True)
+    return abs(disk_sections[0].quality - disk_sections[-1].quality) < EPS
+
 def check_compare_or_spin_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
-        should_spin = False
-        disk_sections = get_disk_sections(context, get_tile_at_guy(context))
-        disk_sections.sort(key=lambda s: s.quality, reverse=True)
-        if abs(disk_sections[0].quality - disk_sections[1].quality) < EPS:
+        should_spin = is_dice_on_spin(context)
+        if disk_has_equal_section_qualities(context):
             should_spin = True
 
         if should_spin:
@@ -330,7 +366,7 @@ def check_compare_or_spin_wheel(context, total_duration_num_frames, check_frame_
 
 def check_compare(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
-        closely_look_guy(context, (check_duration_num_frames / 4) * 2)
+        closely_look_guy(context, int((check_duration_num_frames / 4) * 2))
         disk_sections = get_disk_sections(context, get_tile_at_guy(context))
         disk_sections.sort(key=lambda s: s.quality, reverse=True)
         desired_section = disk_sections[0]
@@ -338,7 +374,7 @@ def check_compare(context, total_duration_num_frames, check_frame_index, check_d
         current_section = get_spinning_wheel_result(context, get_tile_at_guy(context))
         #print(f"comparing: {current_section}, {desired_section.label}")
         if current_section is not desired_section.label:
-            manually_set_spinning_wheel(context, get_spinning_wheel_at_guy(context), target_angle, (check_duration_num_frames / 4) * 2, (check_duration_num_frames / 4) * 2)
+            manually_set_spinning_wheel(context, get_spinning_wheel_at_guy(context), target_angle, int((check_duration_num_frames / 4) * 2), int((check_duration_num_frames / 4) * 2))
 
 def check_spin_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -400,8 +436,9 @@ def get_target_rotation(context):
     num_actions_done = get_num_actions_done(context)
     target_rotation = -9999
 
-    if isinstance(context.first_spinner_rotations, int) and num_actions_done == 0:
-        target_rotation = context.first_spinner_rotations
+    if isinstance(context.first_spinner_rotations, int):
+        if num_actions_done == 0:
+            target_rotation = context.first_spinner_rotations
     else:
         if num_actions_done < len(context.first_spinner_rotations):
             target_rotation = context.first_spinner_rotations[num_actions_done]
@@ -477,7 +514,8 @@ def reset_guy_arms(context, guy):
 
 def reset_spinning_wheel(context, spinning_wheel_obj):
     disk = get_disk(context, spinning_wheel_obj)
-    # disk.rotation_euler.z = 0
+    if "target_angle" in disk:
+        disk.rotation_euler.z = math.radians(disk["target_angle"])
     disk.pop("start_spin_frame", None)
     disk.pop("start_manual_frame", None)
     disk.pop("end_spin_frame", None)
@@ -785,6 +823,7 @@ def manually_set_spinning_wheel(context, spinning_wheel_obj, target_angle, durat
     current_angle = math.degrees(disk.rotation_euler.z)
     delta = (target_angle - current_angle + 180) % 360 - 180
     manual_angle = current_angle + delta  # closest equivalent to target_angle
+    #print(f"Manual set to: {manual_angle}")
     disk["start_manual_frame"] = context.frame_current + start_frame_offset
     disk["end_manual_frame"] = context.frame_current + start_frame_offset + duration_num_frames
     disk["starting_angle"] = math.degrees(disk.rotation_euler.z)
@@ -841,7 +880,8 @@ def handle_manual_wheel(context, spinning_wheel_obj):
     perc = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
     disk.rotation_euler.z = math.radians(start_angle + (target_angle - start_angle) * perc)
     disk.location.z = math.sin(perc * math.pi) * 0.2
-
+    if perc >= 1.0:
+        disk.pop("start_manual_frame", None)
 
 def handle_spinning_wheel(context, spinning_wheel_obj):
     disk = get_disk(context, spinning_wheel_obj)
@@ -850,13 +890,18 @@ def handle_spinning_wheel(context, spinning_wheel_obj):
     starting_angle = disk["starting_angle"]
     target_angle = disk["target_angle"]
     start_spin_frame = disk["start_spin_frame"]
-    end_spin_frame = disk["end_spin_frame"]
+    end_spin_frame = (disk["end_spin_frame"] - 1)
     if starting_angle == target_angle or start_spin_frame == end_spin_frame:
+        return
+    if end_spin_frame <= start_spin_frame:
+        disk.rotation_euler.z = math.radians(target_angle)
         return
     perc = max(0, min((context.frame_current - start_spin_frame) / (end_spin_frame - start_spin_frame), 1), 0)
     perc_anim = math.sin((perc)*(math.pi/2))
     disk.rotation_euler.z = math.radians(starting_angle + (target_angle - starting_angle) * perc_anim)
     handle_spinning_wheel_flipper(context, spinning_wheel_obj)
+    if perc_anim >= 1:
+        disk.pop("start_spin_frame", None)
 
 def handle_spinning_wheels(context):
     for spinning_wheel_obj in get_spinning_wheels(context):
@@ -914,9 +959,9 @@ def start_pick_up_spinning_wheel_animation(context, spinning_wheel_obj, duration
     origin["end_pick_frame"] = context.frame_current + duration_num_frames
     return context.frame_current + duration_num_frames
 
-def get_dice(context):
+def get_dice(context, auto_create = True):
     dice = find_recursive(context, get_guy(context), "dice", False, 4)
-    if dice is None:
+    if dice is None and auto_create:
         guy = get_guy(context)
         prefab_source = find_prefab(context, "dice_base")
         dice_base = duplicate_object_with_children(prefab_source, guy)
@@ -1084,7 +1129,8 @@ def handle_poke_guy(context):
     if diff_arm_left.length < diff_arm_right.length:
         arm_to_use = arm_left
         distance = diff_arm_left.length
-        invert = False
+        z = get_world_up(guy).z
+        invert = z > 0.5 # when laying down. very hacky i dont know whats going on with that arm...
     #print(f"distance: {distance}, scale {get_world_scale(arm_to_use).z}")
     point_object_to(poke_target, arm_to_use, "Z", "Y", invert)
     arm_stretch_dist = 25
@@ -1140,6 +1186,13 @@ def handle_jump_guy(context):
         guy.pop("start_jump_frame", None)
         guy.pop("jump_direction_y", None)
 
+def is_dice_on_spin(context):
+    dice = get_dice(context, False)
+    if dice is None:
+        return False
+    side = get_world_up(dice)
+    return side.z > 0.9
+
 def handle_dice(context):
     bounce_height = 1
     dice = get_dice(context)
@@ -1150,8 +1203,6 @@ def handle_dice(context):
         rot_axis             = Vector((dice["rot_axis_x"], dice["rot_axis_y"], dice["rot_axis_z"]))
         landing_offset_angle = dice["landing_offset_angle"]
         starting_angle       = dice["starting_angle"]
-
-        ends_at_spin = True
 
         dice_sub_base = find_recursive(context, get_guy(context), "dice_sub_base")
         total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
@@ -1282,6 +1333,9 @@ def get_world_forward(obj):
 
 def get_world_left(obj):
     return obj.matrix_world.to_quaternion() @ Vector((1, 0, 0))
+
+def get_world_up(obj):
+    return obj.matrix_world.to_quaternion() @ Vector((0, 0, 1))
 
 def remap(x, in_min, in_max, out_min, out_max):
     return out_min + (x - in_min) * (out_max - out_min) / (in_max - in_min)
