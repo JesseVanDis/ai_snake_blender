@@ -10,7 +10,7 @@ from mathutils import Vector
 
 bpy.app.handlers.frame_change_post.clear()
 
-STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
+STARTING_GUY_POS = Vector((0.316464, -2, 1.1086))
 
 EPS = 1e-6
 FLIPPER_DIRECTION = 90
@@ -35,6 +35,9 @@ def handle_frame(scene):
         init(ctx_scene1)
         init(ctx_scene2)
         init(ctx_scene3)
+        init_scene1(ctx_scene1)
+        init_scene2(ctx_scene2)
+        init_scene3(ctx_scene3)
 
     if scene.frame_current == 1 or scene.frame_current == 2:
         reset_scene1(ctx_scene1)
@@ -49,6 +52,9 @@ def handle_frame(scene):
         reset_scene1(ctx_scene1) if pop_reset_called(ctx_scene1) else None
         reset_scene2(ctx_scene2) if pop_reset_called(ctx_scene2) else None
         reset_scene3(ctx_scene3) if pop_reset_called(ctx_scene3) else None
+
+def init_scene1(context):
+    pass
 
 def reset_scene1(context):
     pass
@@ -91,6 +97,9 @@ def handle_scene1(context):
 
     handle(context)
 
+def init_scene2(context):
+    pass
+
 def reset_scene2(context):
     spinner_tiles = find_recursive_list(context, "tile_neutral")
     for tile in spinner_tiles:
@@ -124,6 +133,13 @@ def handle_scene2(context):
         check_action_end(context)
 
     handle(context)
+
+def init_scene3(context):
+    spinner_tiles = find_recursive_list(context, "tile_neutral")
+    for tile in spinner_tiles:
+        spinning_wheel = get_spinning_wheel_at_tile(context, tile)
+        start_drop_down_spinning_wheel_animation(context, spinning_wheel, 0)
+        add_quality_bar_to_spinning_wheel(context, tile)
 
 def reset_scene3(context):
     spinner_tiles = find_recursive_list(context, "tile_neutral")
@@ -166,10 +182,7 @@ def handle_scene3(context):
         penalty_or_reward = get_tile_penalty_or_reward(tile_current)
         if penalty_or_reward != 0:
             prev_tile_result = get_spinning_wheel_result(get_spinning_wheel_at_tile(context, tile_previous))
-            if penalty_or_reward > 0:
-                add_good_badge_at_disk_section(context, get_guy_prev_tile(context), prev_tile_result)
-            else:
-                add_bad_badge_at_disk_section(context, get_guy_prev_tile(context), prev_tile_result)
+            add_quality_at_disk_section(context, get_guy_prev_tile(context), prev_tile_result, penalty_or_reward)
 
     if (context.frame_current % step_duration) == winlost_reset_start:
         check_action_end(context)
@@ -205,7 +218,6 @@ def handle(context):
     handle_lost_guy(context)
     for spinning_wheel_obj in get_spinning_wheels(context):
         handle_spinning_wheel(context, spinning_wheel_obj)
-
 
 def check_jump_guy(context, duration_num_frames):
     result = get_spinning_wheel_result(get_spinning_wheel_at_guy(context))
@@ -338,6 +350,54 @@ def reset_spinning_wheel(spinning_wheel_obj):
     flipper.pop("last_hit_frame", None)
     flipper.pop("last_offset_to_bar", None)
 
+def is_disk_face_part_of_section(disk, face, section_label = ""):
+    def angle(v):
+        a = math.degrees(math.atan2(v.co.y, v.co.x))
+        if a < 0:
+            a += 360
+        return a
+
+    if face.normal.z < 0.9:
+        return False
+
+    if section_label == "":
+        for v in face.verts:
+            if abs(v.co.x) < EPS and abs(v.co.y) < EPS:
+                return True
+
+    sections = disk["sections"]
+
+    for v in face.verts:
+        if abs(v.co.x) < EPS and abs(v.co.y) < EPS:
+            center_v = None
+            others = []
+            for v in face.verts:
+                if abs(v.co.x) < EPS and abs(v.co.y) < EPS:
+                    center_v = v
+                else:
+                    others.append(v)
+            if center_v is None:
+                continue
+            p0 = center_v
+            p1, p2 = others
+            a1 = angle(p1)
+            a2 = angle(p2)
+            if abs(a1 - a2) > 180:
+                mid_angle = ((a1 + a2 + 360) / 2)
+            else:
+                mid_angle = (a1 + a2) / 2
+            mid_angle = mid_angle % 360
+            for section in sections:
+                sec_label = section["label"]
+                start = section["start"]
+                end = section["end"]
+                if start <= mid_angle < end:
+                    if section_label == sec_label:
+                        return True
+                    break
+    return False
+
+
 def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
     def angle(v):
         a = math.degrees(math.atan2(v.co.y, v.co.x))
@@ -362,36 +422,44 @@ def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
         bm.from_mesh(mesh)
         for face in bm.faces:      
             # Only operate on top faces (normal pointing up)  
-            if face.normal.z < 0.9:
+            if not is_disk_face_part_of_section(disk, face):
                 continue
-            # Only triangles that contain the center vertex (0,0)
-            center_v = None
-            others = []
-            for v in face.verts:
-                if abs(v.co.x) < EPS and abs(v.co.y) < EPS:
-                    center_v = v
-                else:
-                    others.append(v)
-            if center_v is None:
-                continue
-            p0 = center_v
-            p1, p2 = others
-            a1 = angle(p1)
-            a2 = angle(p2)
-            if abs(a1 - a2) > 180:
-                mid_angle = ((a1 + a2 + 360) / 2)
-            else:
-                mid_angle = (a1 + a2) / 2
-            # mid_angle += 10
-            mid_angle = mid_angle % 360
-            mat_index = 0
-            for start, end, sec_label in sections:
-                sec_index = material_index_from_label_object(disk, sec_label)
-                if start <= mid_angle < end:
+
+            for sec_label in sections:
+                if is_disk_face_part_of_section(disk, face, sec_label):
+                    sec_index = material_index_from_label_object(disk, sec_label)
                     if sec_index < len(mesh.materials):
-                        mat_index = sec_index
-                    break
-            face.material_index = mat_index
+                        face.material_index = sec_index
+
+            #
+            # # Only triangles that contain the center vertex (0,0)
+            # center_v = None
+            # others = []
+            # for v in face.verts:
+            #     if abs(v.co.x) < EPS and abs(v.co.y) < EPS:
+            #         center_v = v
+            #     else:
+            #         others.append(v)
+            # if center_v is None:
+            #     continue
+            # p0 = center_v
+            # p1, p2 = others
+            # a1 = angle(p1)
+            # a2 = angle(p2)
+            # if abs(a1 - a2) > 180:
+            #     mid_angle = ((a1 + a2 + 360) / 2)
+            # else:
+            #     mid_angle = (a1 + a2) / 2
+            # # mid_angle += 10
+            # mid_angle = mid_angle % 360
+            # mat_index = 0
+            # for start, end, sec_label in sections:
+            #     sec_index = material_index_from_label_object(disk, sec_label)
+            #     if start <= mid_angle < end:
+            #         if sec_index < len(mesh.materials):
+            #             mat_index = sec_index
+            #         break
+            # face.material_index = mat_index
         bm.to_mesh(mesh)
         bm.free()
         mesh.update()
@@ -434,62 +502,94 @@ def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
             start_angle = end_angle
         return sections
 
-    disk = get_disk(spinning_wheel_obj)        
-    reset_spinning_wheel(spinning_wheel_obj)
     sections = generate_sections(chance_table)
-    apply_colors(disk, sections)
-    add_section_bars(disk, sections)
-    add_section_labels(disk, sections)
+    disk = get_disk(spinning_wheel_obj)
     disk["sections"] = [
         {"start": start, "end": end, "label": label}
         for start, end, label in sections
     ]
+    reset_spinning_wheel(spinning_wheel_obj)
+    apply_colors(disk, sections)
+    add_section_bars(disk, sections)
+    add_section_labels(disk, sections)
 
-def badge_name_from_type(badge_type):
-    if badge_type == 1:
-        return "good"
+
+def add_quality_bar_to_spinning_wheel(context, tile_obj):
+    chance_table = get_spinning_wheel_chance_table(context, tile_obj)
+    for prob, label in chance_table:
+        add_quality_at_disk_section(context, tile_obj, label, 0)
+
+def color_disk_section(context, disk_obj, section_label, color):
+    disk = get_disk(disk_obj)
+    mesh = disk.data
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    color_layer = bm.verts.layers.float_color.get("color")
+    if color_layer is None:
+        raise Exception("Color attribute 'color' not found") # please add a vertex_color attribute and name it "color"
+    for face in bm.faces:
+        if not is_disk_face_part_of_section(disk, face, section_label):
+            continue
+        face.material_index = 1
+        for v in face.verts:
+            v[color_layer] = color
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+
+def get_color_from_quality(quality):
+    q = max(-1.0, min(1.0, quality))
+    if q < 0:
+        # Interpolate red -> grey
+        t = q + 1  # map -1 -> 0, 0 -> 1
+        r = 1.0 * (1 - t) + 0.7 * t  # 1 -> 0.7
+        g = 0.0 * (1 - t) + 0.7 * t  # 0 -> 0.7
+        b = 0.0 * (1 - t) + 0.7 * t  # 0 -> 0.7
     else:
-        return "bad"
+        # Interpolate grey -> green
+        t = q  # 0 -> 1
+        r = 0.7 * (1 - t) + 0.0 * t  # 0.7 -> 0
+        g = 0.7 * (1 - t) + 1.0 * t  # 0.7 -> 1
+        b = 0.7 * (1 - t) + 0.0 * t  # 0.7 -> 0
 
-def get_tile_num_badges(context, tile_obj, section_label, badge_type):
-    disk = get_disk(tile_obj)
-    badge_name = badge_name_from_type(badge_type)
-    badges = find_recursive_list(disk, badge_name)
-    num_badges = 0
-    for badge in badges:
-        if get_property(badge, "section_label", 0) == section_label:
-            num_badges = num_badges+1
-    return num_badges
+    return (r, g, b, 1.0)
 
-def add_badge_at_disk_section(context, tile_obj, section_label, badge_type):
-    print(f"Addeing bagde: {badge_type}")
+def add_quality_at_disk_section(context, tile_obj, section_label, quality):
     disk = get_disk(tile_obj)
     if disk is None or "sections" not in disk:
         return None
-    badge_name = badge_name_from_type(badge_type)
-    sections = disk["sections"] # list of tuples: (start_angle, end_angle, label)
-    for sec in sections:
-        label = sec["label"]
-        if label == section_label:
-            start = sec["start"]
-            end = sec["end"]
-            start = start + 10 # some padding
-            end = end - 10
-            if end < start:
-                end = end + 360
-            placement_angle = random.uniform(start, end)
-            placement_dir = Vector((math.cos(math.radians(placement_angle)), math.sin(math.radians(placement_angle))))
-            placement_dist = random.uniform(0.10, 0.15)
-            template = find_recursive(disk, badge_name)
-            if template is None:
-                print(f"No template found at name '{badge_name}' for label {label}")
+
+    create_colors = False
+    if f"quality_{section_label}" not in disk:
+        create_colors = True
+    current_quality = get_property(disk, f"quality_{section_label}", 0)
+    target_quality = quality
+    new_quality = current_quality + (target_quality - current_quality) * 0.2
+    if new_quality != current_quality:
+        create_colors = True
+
+    if create_colors:
+        disk[f"quality_{section_label}"] = new_quality
+        sections = disk["sections"] # list of tuples: (start_angle, end_angle, label)
+        print(f"Adding quality {quality} to {tile_obj.name}. new quality: {new_quality}")
+        for sec in sections:
+            label = sec["label"]
+            if label == section_label:
+                start = sec["start"]
+                end = sec["end"]
+                quality_bar_obj = find_recursive(disk, f"gen_quality_bar_base_{section_label}")
+                if quality_bar_obj is None:
+                    print(f"create for {section_label}")
+                    template = find_recursive(disk, "quality_bar_base")
+                    quality_bar_obj = duplicate_object_with_children(template, disk)
+                    quality_bar_obj.name = f"gen_quality_bar_base_{section_label}"
+                    make_object_and_children_visible_to_renderer(quality_bar_obj)
+                    quality_bar_obj["section_label"] = section_label
+                    quality_bar_obj.location = (0, 0, 0)
+                    quality_bar_obj.rotation_euler = (0, 0, math.radians(-90 + ((start+end)/2)))
+                color_disk_section(context, disk, label, get_color_from_quality(new_quality))
                 break
-            badge_obj = duplicate_object_with_children(template, disk)
-            badge_obj.location = (placement_dir.x * placement_dist, placement_dir.y * placement_dist, get_tile_num_badges(context, tile_obj, section_label, badge_type) * 0.001)
-            badge_obj.rotation_euler.z = math.radians(random.uniform(start, end))
-            badge_obj["type"] = badge_type
-            badge_obj["section_label"] = section_label
-            break
+
 
 def handle_spinning_wheel_flipper(context, spinning_wheel_obj, snap_strength=5.0):
     disk = get_disk(spinning_wheel_obj)
@@ -608,6 +708,10 @@ def get_spinning_wheel_result(spinning_wheel_name):
             return label
     return None
 
+def get_spinning_wheel_chance_table(context, tile_obj):
+    chance_table = [(0.5,  "L"), (0.5,  "R")]
+    return chance_table
+
 def get_spinning_wheel_at_tile(context, tile_obj):
     spinning_wheel = find_recursive(tile_obj, "spinning_wheel_base")
     if spinning_wheel is None:
@@ -615,8 +719,7 @@ def get_spinning_wheel_at_tile(context, tile_obj):
         prefab_source = find_prefab(context, "spinning_wheel_base")
         spinning_wheel = duplicate_object_with_children(prefab_source, tile_obj, False)
         #print(f"Generated spinner! {prefab_source} for {tile_obj.name}")
-        chance_table = [(0.5,  "L"), (0.5,  "R")]
-        setup_spinning_wheel(context, spinning_wheel, chance_table)
+        setup_spinning_wheel(context, spinning_wheel, get_spinning_wheel_chance_table(context, tile_obj))
 
     return spinning_wheel
 
@@ -685,13 +788,6 @@ def poke_guy_prev_tile(context, duration_num_frames):
     guy["poke_target_x"] = get_property(guy, "jump_starting_abs_pos_x", guy.location.x) + 0.5
     guy["poke_target_y"] = get_property(guy, "jump_starting_abs_pos_y", guy.location.y)
     guy["poke_target_z"] = get_property(guy, "jump_starting_abs_pos_z", guy.location.z)
-
-
-def add_bad_badge_at_disk_section(context, tile, section_name):
-    add_badge_at_disk_section(context, tile, section_name, -1)
-
-def add_good_badge_at_disk_section(context, tile, section_name):
-    add_badge_at_disk_section(context, tile, section_name, 1)
 
 def jump_guy(context, direction_y, duration_num_frames = 11):
     guy = get_guy(context)
