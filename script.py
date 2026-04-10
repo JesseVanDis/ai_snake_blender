@@ -17,7 +17,7 @@ EPS = 1e-6
 FLIPPER_DIRECTION = 90
 
 class SceneContext:
-    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos_offset = 0):
+    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos_offset = 0, quality_multiplier = 0.4):
         self.scene_obj = scene_obj
         self.global_scene = scene
         self.frame_current = scene.frame_current - 3 # hacky offset, initialization stuff...
@@ -27,14 +27,20 @@ class SceneContext:
         self.guy_starting_pos_offset = guy_starting_pos_offset
         self.parent = None
         self.obj_guy = None
+        self.quality_multiplier = quality_multiplier
+        self.action_duration_num_frames = 0
 
 def handle_frame(scene):
+    timer_start = time.perf_counter()
+
     configs = [
-        ("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100),)),
-        ("scene2", ()),
-        ("scene3", ((180, 180, 180, 180, 180), -2)),
-        ("scene4", ((-180, -180, -180, -180, -180), 2)),
-        ("scene5", ((-180, -180, -180, -180, -180), 1)),
+        #("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100),)),
+        #("scene2", ()),
+        #("scene3", ((180, 180, 180, 180, 180), -2)),
+        #("scene4", ((-180, -180, -180, -180, -180), 2, 0.4)),
+        #("scene5", ((180, 0, 180, 180, 180, 0, 0, 180, 0, 0, 0), 0, 0.4)),
+        #("scene6", ((180), 0)),
+        ("scene7", ((180), 0)),
     ]
 
     ctxs = []
@@ -52,7 +58,7 @@ def handle_frame(scene):
 
     if scene.frame_current == 1 or scene.frame_current == 2:
         for name, ctx in ctxs:
-            globals()[f"reset_{name}"](ctx, True)
+            globals()[f"reset_{name}"]( ctx, True)
 
     if scene.frame_current >= 3:
         for name, ctx in ctxs:
@@ -60,7 +66,11 @@ def handle_frame(scene):
 
         for name, ctx in ctxs:
             if pop_reset_called(ctx):
-                globals()[f"reset_{name}"](ctx, False)
+                globals()[f"reset_{name}"]( ctx, False)
+
+    timer_end = time.perf_counter()
+    duration_us = (timer_end - timer_start) * 1_000_000
+    #print(f"frame {scene.frame_current} took {duration_us:.1f} µs")
 
 
 def reset_scene1(context, first_time):
@@ -163,7 +173,7 @@ def handle_scene5(context):
 
     checks = [
         # check function name,          duration
-        ("check_compare_or_spin_wheel", 40),
+        ("check_compare_or_spin_wheel", 20),
         ("check_jump_guy",              11),
         ("check_reward_or_penalty",     5),
         ("check_set_quality_by_poke",   10),
@@ -178,8 +188,66 @@ def handle_scene5(context):
     handle_lost_guy(context)
     handle_spinning_wheels(context)
 
+def reset_scene6(context, first_time):
+    for tile in find_recursive_list(context, context, "tile_neutral"):
+        start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
+        if first_time:
+            add_quality_bar_to_spinning_wheel(context, tile)
+
+def handle_scene6(context):
+    duration_multiplier = 1.0
+
+    checks = [
+        # check function name,          duration
+        ("check_pause",                 20),
+        ("check_compare_or_spin_wheel", 20),
+        ("check_jump_guy",              11),
+        ("check_reward_or_penalty",     5),
+        ("check_set_quality_by_poke",   10),
+        ("check_pause",                 20),
+        ("check_action_end",            1)
+    ]
+    handle_checks(context, checks, duration_multiplier)
+
+    handle_jump_guy(context)
+    handle_poke_guy(context)
+    handle_closely_look_guy(context)
+    handle_win_guy(context)
+    handle_lost_guy(context)
+    handle_spinning_wheels(context)
+
+def reset_scene7(context, first_time):
+    for tile in find_recursive_list(context, context, "tile_neutral"):
+        start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
+        if first_time:
+            add_quality_bar_to_spinning_wheel(context, tile)
+
+def handle_scene7(context):
+    duration_multiplier = 1.0
+
+    checks = [
+        # check function name,          duration
+        #("check_pause",                 40),
+        ("check_dice",                  40),
+        ("check_compare_or_spin_wheel", 20),
+        ("check_jump_guy",              11),
+        ("check_reward_or_penalty",     5),
+        ("check_set_quality_by_poke",   10),
+        ("check_pause",                 4),
+        ("check_action_end",            1)
+    ]
+    handle_checks(context, checks, duration_multiplier)
+    handle_dice(context)
+    handle_jump_guy(context)
+    handle_poke_guy(context)
+    handle_closely_look_guy(context)
+    handle_win_guy(context)
+    handle_lost_guy(context)
+    handle_spinning_wheels(context)
+
 def handle_checks(context, checks, duration_multiplier):
     total_duration = sum(scale_duration(duration, duration_multiplier) for _, duration in checks) + 2
+    context.action_duration_num_frames = total_duration
     start_frame = 1
     for func_name, duration in checks:
         fn = globals()[func_name]
@@ -217,8 +285,7 @@ def handle(context):
     handle_poke_guy(context)
     handle_win_guy(context)
     handle_lost_guy(context)
-    for spinning_wheel_obj in get_spinning_wheels(context):
-        handle_spinning_wheel(context, spinning_wheel_obj)
+    handle_spinning_wheels(context)
 
 def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -240,6 +307,13 @@ def check_drop_down_spinning_wheel(context, total_duration_num_frames, check_fra
 def check_pick_up_spinning_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         start_pick_up_spinning_wheel_animation(context, get_spinning_wheel_at_guy(context), check_duration_num_frames)
+
+def check_dice(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    if (context.frame_current % total_duration_num_frames) == check_frame_index:
+        throw_dice(context, check_duration_num_frames)
+
+def check_pause(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    pass
 
 def check_compare_or_spin_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -309,12 +383,12 @@ def check_reward_or_penalty(context, total_duration_num_frames, check_frame_inde
         if name_contains_key(tile.name, "win"):
             win_guy(context, check_duration_num_frames)
 
+def get_num_actions_done(context):
+    return int(context.frame_current / context.action_duration_num_frames)
+
 def check_action_end(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
-        guy = get_guy(context)
-        num_actions_done = get_property(guy, "num_actions_done", 0)
-        guy["num_actions_done"] = (num_actions_done + 1)
-        print(f"action {num_actions_done} done")
+        print(f"action {get_num_actions_done(context)} done")
         if guy_won(context) or guy_lost(context):
             reset(context)
 
@@ -323,10 +397,14 @@ def guy_got_reward_or_penalty(context):
     return get_tile_penalty_or_reward(tile) != 0
 
 def get_target_rotation(context):
-    num_actions_done = get_property(get_guy(context), "num_actions_done", 0)
-    target_rotation = -1
-    if num_actions_done < len(context.first_spinner_rotations):
-        target_rotation = context.first_spinner_rotations[num_actions_done]
+    num_actions_done = get_num_actions_done(context)
+    target_rotation = -9999
+
+    if isinstance(context.first_spinner_rotations, int) and num_actions_done == 0:
+        target_rotation = context.first_spinner_rotations
+    else:
+        if num_actions_done < len(context.first_spinner_rotations):
+            target_rotation = context.first_spinner_rotations[num_actions_done]
     return target_rotation
 
 def get_guy_starting_pos(context):
@@ -347,6 +425,14 @@ def reset(context):
     guy.pop("start_closely_look_frame", None)
     guy.pop("win_frame", None)
     reset_guy_arms(context, guy)
+
+    dice_sub_base = find_recursive(context, get_guy(context), "dice_sub_base")
+    if dice_sub_base is not None:
+        dice = find_recursive(context, get_guy(context), "dice")
+        dice.pop("start_throw_frame", None)
+        dice_sub_base.scale = (0,0,0)
+        dice_sub_base.hide_viewport = False
+        dice_sub_base.hide_render = True
 
     for spinning_wheel_obj in get_spinning_wheels(context):
         reset_spinning_wheel(context, spinning_wheel_obj)
@@ -585,8 +671,8 @@ def get_color_from_quality(quality):
 
     return (r, g, b, 1.0)
 
-def calculate_new_quality(current_quality, desired_quality):
-    new_quality = current_quality + (desired_quality - current_quality) * 0.4
+def calculate_new_quality(context, current_quality, desired_quality):
+    new_quality = current_quality + (desired_quality - current_quality) * context.quality_multiplier
     return new_quality
 
 class DiskSection:
@@ -625,7 +711,7 @@ def add_quality_at_disk_section(context, tile_obj, section_label, quality):
         create_colors = True
     current_quality = get_property(disk, f"quality_{section_label}", 0)
     target_quality = quality
-    new_quality = calculate_new_quality(current_quality, target_quality)
+    new_quality = calculate_new_quality(context, current_quality, target_quality)
     if new_quality != current_quality:
         create_colors = True
 
@@ -704,13 +790,13 @@ def manually_set_spinning_wheel(context, spinning_wheel_obj, target_angle, durat
     disk["starting_angle"] = math.degrees(disk.rotation_euler.z)
     disk["manual_angle"] = manual_angle
 
-def spin_spinning_wheel(context, spinning_wheel_obj, target_angle=-1.0, duration_num_frames=40, min_turns=1):
+def spin_spinning_wheel(context, spinning_wheel_obj, target_angle=-9999.0, duration_num_frames=40, min_turns=1):
     disk = get_disk(context, spinning_wheel_obj)
     if disk is None:
         return
     starting_angle = math.degrees(disk.rotation_euler.z)
     actual_target_angle = target_angle
-    if actual_target_angle < 0:
+    if actual_target_angle < -9990:
         random.seed(context.frame_current)  # deterministic seed
         actual_target_angle = random.uniform(0, 360)
         # print(f"spinner end angle set to: {actual_target_angle}")
@@ -827,6 +913,32 @@ def start_pick_up_spinning_wheel_animation(context, spinning_wheel_obj, duration
     origin["start_pick_frame"] = context.frame_current
     origin["end_pick_frame"] = context.frame_current + duration_num_frames
     return context.frame_current + duration_num_frames
+
+def get_dice(context):
+    dice = find_recursive(context, get_guy(context), "dice", False, 4)
+    if dice is None:
+        guy = get_guy(context)
+        prefab_source = find_prefab(context, "dice_base")
+        dice_base = duplicate_object_with_children(prefab_source, guy)
+        dice_base.rotation_euler.z = math.radians(90)
+        dice = find_recursive(context, dice_base, "dice")
+        dice_sub_base = find_recursive(context, dice_base, "dice_sub_base")
+        dice_base.scale = (10, 10, 10)
+        dice_sub_base.scale = (0, 0, 0)
+    return dice
+
+def throw_dice(context, duration_num_frames):
+    dice = get_dice(context)
+    random.seed(context.frame_current)
+    dice["rot_axis_x"] = random.uniform(-180, 180)
+    dice["rot_axis_y"] = random.uniform(-180, 180)
+    dice["rot_axis_z"] = random.uniform(-180, 180)
+    dice["starting_angle"] = random.uniform(0, 360)
+    dice["landing_offset_angle"] = random.uniform(-20, 20)
+    random.seed(context.frame_current)  # deterministic seed
+    dice["start_throw_frame"] = context.frame_current
+    dice["end_throw_frame"] = context.frame_current + duration_num_frames
+    dice["ends_at_spin"] = random.randint(1, 6) == 1
 
 def get_tile_at_pos(context, abs_pos):
     closest_tile = None
@@ -1028,6 +1140,59 @@ def handle_jump_guy(context):
         guy.pop("start_jump_frame", None)
         guy.pop("jump_direction_y", None)
 
+def handle_dice(context):
+    bounce_height = 1
+    dice = get_dice(context)
+    start_frame = get_property(dice, "start_throw_frame", -1)
+    if start_frame >= 0:
+        end_frame            = dice["end_throw_frame"]
+        ends_at_spin         = dice["ends_at_spin"]
+        rot_axis             = Vector((dice["rot_axis_x"], dice["rot_axis_y"], dice["rot_axis_z"]))
+        landing_offset_angle = dice["landing_offset_angle"]
+        starting_angle       = dice["starting_angle"]
+
+        ends_at_spin = True
+
+        dice_sub_base = find_recursive(context, get_guy(context), "dice_sub_base")
+        total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+
+        anim_scale     = remap_clamped(total_anim,  0, 0.1, 0, 1)
+        anim_throw     = remap(total_anim,  0.0,   0.6,   0, 1)
+        anim_flat      = remap_clamped(total_anim,  0.6, 0.65,   0, 1)
+        anim_pickup    = remap(total_anim,  0.9, 1.0,   0, 1)
+
+        ending_angle = starting_angle + 360*1
+        if ends_at_spin:
+            ending_angle = ending_angle + (360 - (ending_angle % 360))
+            ending_angle = ending_angle + landing_offset_angle
+        else:
+            if ending_angle % 360 < 50 or ending_angle % 360 > (360 - 50):
+                ending_angle = ending_angle + 90
+
+        if anim_scale > 0 and anim_throw <= 1:
+            dice_sub_base.hide_viewport = False
+            dice_sub_base.hide_render = False
+            dice_sub_base.scale = (anim_scale,anim_scale,anim_scale)
+            set_axis_angle(dice, rot_axis, starting_angle)
+        if anim_throw > 0 and anim_throw <= 1:
+            dice_sub_base.hide_viewport = False
+            dice_sub_base.hide_render = False
+            dice.location.z = math.sin(anim_throw * math.pi) * bounce_height
+            dice_sub_base.scale = (anim_scale,anim_scale,anim_scale)
+            set_axis_angle(dice, rot_axis, starting_angle + (ending_angle - starting_angle) * anim_throw)
+        if anim_flat > 0:
+            snap_pitch_roll(dice, anim_flat)
+        if anim_pickup > 0 and anim_pickup < 1:
+            dice_sub_base.hide_viewport = False
+            dice_sub_base.hide_render = False
+            dice.location.z = 0
+            dice_sub_base.scale = (1-anim_pickup, 1-anim_pickup, 1-anim_pickup)
+        if anim_pickup >= 1:
+            dice_sub_base.hide_viewport = False
+            dice_sub_base.hide_render = True
+            dice_sub_base.scale = (0,0,0)
+            dice.location.z = 0
+            dice.pop("start_throw_frame", None)
 
 # register handler once
 if handle_frame not in bpy.app.handlers.frame_change_post:
@@ -1139,13 +1304,15 @@ def internal_is_match(obj, name):
         return True
     return False
 
-def internal_find_recursive(context, obj, name, allow_prefab = False):
+def internal_find_recursive(context, obj, name, allow_prefab = False, max_depth = 10):
+    if max_depth < 0:
+        return None
     for child in obj.children:
         if internal_is_match(child, name):
             if not should_ignore(obj, allow_prefab):
                 return child
     for child in obj.children:
-        found = internal_find_recursive(context, child, name, allow_prefab)
+        found = internal_find_recursive(context, child, name, allow_prefab, max_depth-1)
         if found:
             return found
     return None
@@ -1158,14 +1325,14 @@ def check_if_it_is_generator_object(obj):
         check_obj = check_obj.parent
     return False
 
-def find_recursive(context, obj, name, allow_prefab = False):
+def find_recursive(context, obj, name, allow_prefab = False, max_depth = 10):
     if obj == None:
         return None
 
     is_generator_object = check_if_it_is_generator_object(obj)
     if is_generator_object:
         last_find_result_name = get_property(obj, f"last_find_result_of_{name}", "")
-        if last_find_result_name is not "":
+        if last_find_result_name != "":
             return context.global_scene.objects[last_find_result_name]
 
     result = None
@@ -1173,7 +1340,7 @@ def find_recursive(context, obj, name, allow_prefab = False):
         if not should_ignore(obj, allow_prefab):
             result = obj
     if result == None:
-        result = internal_find_recursive(context, obj, name, allow_prefab)
+        result = internal_find_recursive(context, obj, name, allow_prefab, max_depth-1)
     if result and is_generator_object:
         obj[f"last_find_result_of_{name}"] = result.name
     return result
@@ -1188,7 +1355,7 @@ def unique_list(lst):
     return result
 
 def find_prefab(context, name):
-    return find_recursive(context, context.global_scene.objects["_prefabs"], name, True)
+    return find_recursive(context, context.global_scene.objects["_prefabs"], name, True, 3)
 
 def find_recursive_list(context, obj, name, max_depth = 10):
     matches = []
@@ -1264,6 +1431,30 @@ def point_object_to(world_pos, obj, track_axis='Z', up_axis='Y', invert = False)
     # Preserve existing object rotation offset if needed
     obj.rotation_mode = 'QUATERNION'
     obj.rotation_quaternion = rot_local
+
+def set_axis_angle(obj, axis, angle_deg):
+    axis = Vector(axis).normalized()
+    angle_rad = math.radians(angle_deg)
+
+    q = mathutils.Quaternion(axis, angle_rad)
+
+    obj.rotation_mode = 'QUATERNION'
+    obj.rotation_quaternion = q
+
+def snap_pitch_roll(obj, anim_perc=1.0):
+    def snap_90(angle_rad):
+        return round(angle_rad / (math.pi / 2)) * (math.pi / 2)
+    obj.rotation_mode = 'XYZ'
+    e = obj.rotation_euler.copy()
+    yaw = e.z
+    snapped_x = snap_90(e.x)
+    snapped_y = snap_90(e.y)
+    target_euler = mathutils.Euler((snapped_x, snapped_y, yaw), 'XYZ')
+    q_current = obj.rotation_euler.to_quaternion()
+    q_target = target_euler.to_quaternion()
+    q_result = q_current.slerp(q_target, anim_perc)
+    obj.rotation_mode = 'QUATERNION'
+    obj.rotation_quaternion = q_result
 
 def time_function(fn, *args, **kwargs):
     start = time.perf_counter()
