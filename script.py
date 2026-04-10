@@ -937,6 +937,8 @@ def duplicate_object_with_children(template, parent, reference = True, is_root =
     if not reference:
         if obj.data:
             obj.data = template.data.copy()
+            if not obj.data.name.startswith("gen_"):
+                obj.data.name = "gen_" + obj.data.name
             
     bpy.context.collection.objects.link(obj)
 
