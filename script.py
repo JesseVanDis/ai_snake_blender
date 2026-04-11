@@ -46,7 +46,7 @@ def handle_frame(scene):
         #("scene7", ((180), 0, 0.3)),
         #("scene8", ((), 0, 0.3)),
         #("scene9", ((180, 180, 180, 180, 180, 180, 180), 0, 0.3, True)),
-        ("scene10", ((), 0, 0.3, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+        ("scene10", ((), 0, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
 
     ctxs = []
@@ -1276,11 +1276,12 @@ def handle_poke_guy(context):
         distance = diff_arm_left.length
     #print(f"distance: {distance}, scale {get_world_scale(arm_to_use).z}")
     point_object_to(poke_target, arm_to_use)
-    arm_stretch_dist = 25
-    if abs(guy.rotation_euler.x) > EPS: # if guy is laying down
-        arm_stretch_dist = 8
-    #print(f"stretch: {arm_stretch_dist}. euler: {guy.rotation_euler}")
-    arm_to_use.scale.z = 1 + ((distance-1) * math.sin(anim*math.pi)) * arm_stretch_dist
+    arm_stretch_dist = distance
+    #if abs(guy.rotation_euler.x) > EPS: # if guy is laying down
+    #    arm_stretch_dist = 8
+    arm_to_use.scale.z = math.sin(anim*math.pi) * arm_stretch_dist * 3.6
+    #arm_to_use.scale.z = 1 + ((distance-1) * math.sin(anim*math.pi)) * arm_stretch_dist
+    #print(f"given dist: {distance}, scale: {arm_to_use.scale.z}, dist: {arm_stretch_dist}")
     #print(f"z scale: {arm_to_use.scale.z} ({distance}, {arm_stretch_dist})")
     if anim >= 1:
         guy.pop("start_poke_frame", None)
@@ -1646,7 +1647,7 @@ def point_object_to(world_pos, obj, track_axis='Z', up_axis='Y'):
     point_object_to_internal(world_pos, obj, track_axis, up_axis, True)
     forward = obj.matrix_world.to_quaternion() @ Vector((0, 0, 1))
     diff = math.dist (direction.normalized(), forward)
-    #print(f"forward of {obj.name}: {forward}, diff {diff}")
+    print(f"forward of {obj.name}: {forward}, diff {diff}")
     #if diff > 1:
     #    flip = mathutils.Quaternion(Vector((0, 1, 0)), math.pi)
     #    obj.rotation_quaternion = obj.rotation_quaternion @ flip
