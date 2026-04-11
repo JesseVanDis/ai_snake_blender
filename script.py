@@ -17,7 +17,7 @@ EPS = 1e-6
 FLIPPER_DIRECTION = 90
 
 class SceneContext:
-    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos_offset = 0, quality_multiplier = 0.4):
+    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos_offset = 0, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")]):
         self.scene_obj = scene_obj
         self.global_scene = scene
         self.frame_current = scene.frame_current - 3 # hacky offset, initialization stuff...
@@ -27,8 +27,11 @@ class SceneContext:
         self.guy_starting_pos_offset = guy_starting_pos_offset
         self.parent = None
         self.obj_guy = None
-        self.quality_multiplier = quality_multiplier
+        self.quality_multiplier = quality_multiplier # aka. alpha
         self.action_duration_num_frames = 0
+        self.quality_bleeds_over = quality_bleeds_over
+        self.gamma = 0.8  # max bleedover value perc compared to neighbour
+        self.chance_table = chance_table
 
 def handle_frame(scene):
     timer_start = time.perf_counter()
@@ -41,7 +44,9 @@ def handle_frame(scene):
         #("scene5", ((180, 0, 180, 180, 180, 0, 0, 180, 0, 0, 0), 0, 0.4)),
         #("scene6", ((180), 0)),
         #("scene7", ((180), 0, 0.3)),
-        ("scene8", ((), 0, 0.3)),
+        #("scene8", ((), 0, 0.3)),
+        #("scene9", ((180, 180, 180, 180, 180, 180, 180), 0, 0.3, True)),
+        ("scene10", ((), 0, 0.3, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
 
     ctxs = []
@@ -275,6 +280,64 @@ def handle_scene8(context):
     handle_lost_guy(context)
     handle_spinning_wheels(context)
 
+def reset_scene9(context, first_time):
+    for tile in find_recursive_list(context, context, "tile_neutral"):
+        start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
+        if first_time:
+            add_quality_bar_to_spinning_wheel(context, tile)
+
+def handle_scene9(context):
+    duration_multiplier = 1.0
+
+    checks = [
+        # check function name,          duration
+        #("check_pause",                 40),
+        ("check_dice",                  25),
+        ("check_compare_or_spin_wheel", 20),
+        ("check_jump_guy",              11),
+        ("check_reward_or_penalty",     5),
+        ("check_set_quality_by_poke",   10),
+        ("check_pause",                 4),
+        ("check_action_end",            1)
+    ]
+    handle_checks(context, checks, duration_multiplier)
+    handle_dice(context)
+    handle_jump_guy(context)
+    handle_poke_guy(context)
+    handle_closely_look_guy(context)
+    handle_win_guy(context)
+    handle_lost_guy(context)
+    handle_spinning_wheels(context)
+
+def reset_scene10(context, first_time):
+    for tile in find_recursive_list(context, context, "tile_neutral"):
+        start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
+        if first_time:
+            add_quality_bar_to_spinning_wheel(context, tile)
+
+def handle_scene10(context):
+    duration_multiplier = 1.0
+
+    checks = [
+        # check function name,          duration
+        #("check_pause",                 40),
+        ("check_dice",                  25),
+        ("check_compare_or_spin_wheel", 20),
+        ("check_jump_guy",              11),
+        ("check_reward_or_penalty",     5),
+        ("check_set_quality_by_poke",   10),
+        ("check_pause",                 4),
+        ("check_action_end",            1)
+    ]
+    handle_checks(context, checks, duration_multiplier)
+    handle_dice(context)
+    handle_jump_guy(context)
+    handle_poke_guy(context)
+    handle_closely_look_guy(context)
+    handle_win_guy(context)
+    handle_lost_guy(context)
+    handle_spinning_wheels(context)
+
 def handle_checks(context, checks, duration_multiplier):
     total_duration = sum(scale_duration(duration, duration_multiplier) for _, duration in checks) + 2
     context.action_duration_num_frames = total_duration
@@ -306,6 +369,9 @@ def init(context):
         guy.pop("num_actions_done", None)
         guy.pop("num_penalty", None)
         guy.pop("num_reward", None)
+        guy.pop("num_losses", None)
+        guy.pop("num_wins", None)
+
         penalty = get_text_penalty(context)
         if penalty is not None:
             penalty.data.body = "0"
@@ -327,7 +393,7 @@ def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_in
     if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
         tile_current  = get_tile_at_guy(context)
         tile_previous = get_guy_prev_tile(context)
-        penalty_or_reward = get_tile_penalty_or_reward(tile_current)
+        penalty_or_reward = get_tile_penalty_or_reward(context, tile_current)
         if penalty_or_reward != 0:
             prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
             add_quality_at_disk_section(context, get_guy_prev_tile(context), prev_tile_result, penalty_or_reward)
@@ -354,6 +420,14 @@ def disk_has_equal_section_qualities(context):
     return abs(disk_sections[0].quality - disk_sections[-1].quality) < EPS
 
 def check_compare_or_spin_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    # disk = get_disk(context, get_tile_at_guy(context))
+    # if disk is not None:
+    #     result = get_spinning_wheel_result(context, get_tile_at_guy(context))
+    #     print(f"current tile disk angle: {math.degrees(disk.rotation_euler.z):.2f} ({(math.degrees(disk.rotation_euler.z) % 360):.2f}). section: {result}")
+    #     disk_sections = get_disk_sections(context, get_tile_at_guy(context))
+    #     for sec in disk_sections:
+    #         print(f"section angle of '{sec.label}': {sec.angle_for_target_start} - {sec.angle_for_target_end}")
+
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         should_spin = is_dice_on_spin(context)
         if disk_has_equal_section_qualities(context):
@@ -364,16 +438,32 @@ def check_compare_or_spin_wheel(context, total_duration_num_frames, check_frame_
         else:
             check_compare(context, total_duration_num_frames, check_frame_index, check_duration_num_frames)
 
+def get_target_angle_for_section(context, disk_obj, section_label):
+    disk_sections = get_disk_sections(context, disk_obj)
+    for section in disk_sections:
+        if section.label == section_label:
+            return ((section.angle_for_target_start + section.angle_for_target_end) / 2)
+    return 0
+
+# random if 2 or more top qualities are equal
+def get_top_quality_section(context, disk_obj):
+    disk_sections = get_disk_sections(context, disk_obj)
+    disk_sections.sort(key=lambda s: s.quality, reverse=True)
+    top_quality = disk_sections[0].quality
+    top_sections = [s for s in disk_sections if s.quality == top_quality]
+    random.seed(context.frame_current * 931)
+    return random.choice(top_sections)
+
 def check_compare(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
+        tile = get_tile_at_guy(context)
         closely_look_guy(context, int((check_duration_num_frames / 4) * 2))
-        disk_sections = get_disk_sections(context, get_tile_at_guy(context))
-        disk_sections.sort(key=lambda s: s.quality, reverse=True)
-        desired_section = disk_sections[0]
-        target_angle = desired_section.angle_start
-        current_section = get_spinning_wheel_result(context, get_tile_at_guy(context))
+        top_quality_section = get_top_quality_section(context, tile)
+        target_angle = get_target_angle_for_section(context, tile, top_quality_section.label)
+        print(f"Aiming for: {top_quality_section.label}, at angle: {target_angle}")
+        current_section = get_spinning_wheel_result(context, tile)
         #print(f"comparing: {current_section}, {desired_section.label}")
-        if current_section is not desired_section.label:
+        if current_section is not top_quality_section.label:
             manually_set_spinning_wheel(context, get_spinning_wheel_at_guy(context), target_angle, int((check_duration_num_frames / 4) * 2), int((check_duration_num_frames / 4) * 2))
 
 def check_spin_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
@@ -383,33 +473,54 @@ def check_spin_wheel(context, total_duration_num_frames, check_frame_index, chec
 def check_jump_guy(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         result = get_spinning_wheel_result(context, get_spinning_wheel_at_guy(context))
-        if result == "L":
-            jump_guy(context, -1, check_duration_num_frames)
-        else:
-            jump_guy(context, 1, check_duration_num_frames)
+        print(f"Spinning Wheel result: {result}")
+        if result == "W":
+            jump_guy(context, 0, -1, check_duration_num_frames)
+        if result == "E":
+            jump_guy(context, 0, 1, check_duration_num_frames)
+        if result == "N":
+            jump_guy(context, -1, 0, check_duration_num_frames)
+        if result == "S":
+            jump_guy(context, 1, 0, check_duration_num_frames)
 
-def get_tile_penalty(tile):
+def get_tile_penalty(context, tile):
     pen_match = re.search(r"_pen(\d+)", tile.name)
     if pen_match:
         return int(pen_match.group(1))
     return 0
 
-def get_tile_reward(tile):
+def get_tile_reward(context, tile):
     rew_match = re.search(r"_rew(\d+)", tile.name)
     if rew_match:
         return int(rew_match.group(1))
+
+    if context.quality_bleeds_over:
+        # bleed_over = True
+        # if name_contains_key(tile.name, "lose"):
+        #     bleed_over = False
+        # if name_contains_key(tile.name, "win"):
+        #     bleed_over = False
+        # if bleed_over:
+        disk = get_disk(context, tile)
+        if disk:
+            disk_sections = get_disk_sections(context, tile)
+            disk_sections.sort(key=lambda s: s.quality, reverse=True)
+            best_section = disk_sections[0]
+            return best_section.quality * context.gamma
+
     return 0
 
-def get_tile_penalty_or_reward(tile):
-    penalty = get_tile_penalty(tile)
-    reward = get_tile_reward(tile)
+def get_tile_penalty_or_reward(context, tile):
+    penalty = get_tile_penalty(context, tile)
+    reward = get_tile_reward(context, tile)
     return reward - penalty
 
 def check_reward_or_penalty(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         tile = get_tile_at_guy(context)
-        penalty = get_tile_penalty(tile)
-        reward = get_tile_reward(tile)
+        #print(f"Checking tile {tile.name}")
+        penalty = get_tile_penalty(context, tile)
+        reward = get_tile_reward(context, tile)
         if penalty > 0:
             penelize_guy(context, penalty)
         if reward > 0:
@@ -430,7 +541,7 @@ def check_action_end(context, total_duration_num_frames, check_frame_index, chec
 
 def guy_got_reward_or_penalty(context):
     tile = get_tile_at_guy(context)
-    return get_tile_penalty_or_reward(tile) != 0
+    return get_tile_penalty_or_reward(context, tile) != 0
 
 def get_target_rotation(context):
     num_actions_done = get_num_actions_done(context)
@@ -454,9 +565,10 @@ def reset(context):
     guy.scale = (0.1, 0.1, 0.1)
     guy.rotation_euler.x = 0
     guy.rotation_euler.y = 0
-    guy.rotation_euler.z = math.radians(90)
+    guy.rotation_euler.z = math.radians(0)
     guy.pop("start_jump_frame", None)
     guy.pop("start_poke_frame", None)
+    guy.pop("jump_direction_x", None)
     guy.pop("jump_direction_y", None)
     guy.pop("lost_frame", None)
     guy.pop("start_closely_look_frame", None)
@@ -608,9 +720,9 @@ def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
             if not is_disk_face_part_of_section(disk, face):
                 continue
 
-            for sec_label in sections:
-                if is_disk_face_part_of_section(disk, face, sec_label):
-                    sec_index = material_index_from_label_object(disk, sec_label)
+            for sec in sections:
+                if is_disk_face_part_of_section(disk, face, sec.label):
+                    sec_index = material_index_from_label_object(disk, sec.label)
                     if sec_index < len(mesh.materials):
                         face.material_index = sec_index
 
@@ -623,44 +735,58 @@ def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
         if template is None:
             print("Bar object not found")
             return
-        for start, end, _ in sections:
+        for sec in sections:
             bar = template.copy()
             bar.name = f"gen_{template.name}"
             bpy.context.collection.objects.link(bar)
             bar.parent = disk
             bar.matrix_parent_inverse.identity()
             bar.location = (0,0,0)
-            bar.rotation_euler = (0,0,math.radians(start))
+            bar.rotation_euler = (0,0,math.radians(sec.angle_start))
             make_object_and_children_visible_to_renderer(bar)            
             
     def add_section_labels(disk, sections):
-        for start, end, label in sections:
+        for sec in sections:
             # Find the template child whose name starts with 'choise_{label}'
-            template = next((c for c in disk.children if c.name.startswith(f"choise_{label}")), None)
+            template = next((c for c in disk.children if c.name.startswith(f"choise_{sec.label}")), None)
             if template is None:
-                print(f"No template found for label {label}")
+                print(f"No template found for label {sec.label}")
                 continue
             label_obj = duplicate_object_with_children(template, disk)
             make_object_and_children_visible_to_renderer(label_obj)
             label_obj.location = (0, 0, 0)
-            label_obj.rotation_euler = (0, 0, math.radians(-90 + ((start+end)/2)))
+            label_obj.rotation_euler = (0, 0, math.radians(-90 + ((sec.angle_start + sec.angle_end)/2)))
             
     def generate_sections(chance_table):
         total = sum(ch for ch, _ in chance_table)
         normalized = [(ch / total, label) for ch, label in chance_table]
         sections = []
         start_angle = 0.0
+
+        angles = []
         for prob, label in normalized:
             end_angle = start_angle + prob * 360
-            sections.append((start_angle, end_angle, label))
+            angles.append((start_angle, end_angle, label))
             start_angle = end_angle
+
+        next_index_mirror = 0
+        for index in range(len(angles)):
+            start_angle = angles[index][0]
+            end_angle = angles[index][1]
+            start_mirror_angle = angles[next_index_mirror][0]
+            end_mirror_angle = angles[next_index_mirror][1]
+            label = angles[index][2]
+            section = DiskSection(label, start_angle, end_angle, start_mirror_angle, end_mirror_angle, 0)
+            sections.append(section)
+            next_index_mirror = (next_index_mirror - 1) % len(angles)
+
         return sections
 
     sections = generate_sections(chance_table)
     disk = get_disk(context, spinning_wheel_obj)
     disk["sections"] = [
-        {"start": start, "end": end, "label": label}
-        for start, end, label in sections
+        {"start": sec.angle_start, "end": sec.angle_end, "start_for_target": sec.angle_for_target_start, "end_for_target": sec.angle_for_target_end, "label": sec.label}
+        for sec in sections
     ]
     reset_spinning_wheel(context, spinning_wheel_obj)
     apply_colors(disk, sections)
@@ -717,12 +843,16 @@ class DiskSection:
     label: str
     angle_start: float
     angle_end: float
+    angle_for_target_start: float
+    angle_for_target_end: float
     quality: float
 
-    def __init__(self, label, angle_start, angle_end, quality):
+    def __init__(self, label, angle_start, angle_end, angle_for_target_start, angle_for_target_end, quality):
         self.label = label
         self.angle_start = angle_start
         self.angle_end = angle_end
+        self.angle_for_target_start = angle_for_target_start
+        self.angle_for_target_end = angle_for_target_end
         self.quality = quality
 
 def get_disk_sections(context, tile_obj):
@@ -735,7 +865,9 @@ def get_disk_sections(context, tile_obj):
         label = sec["label"]
         start = sec["start"]
         end = sec["end"]
-        section = DiskSection(label, start, end, get_property(disk, f"quality_{label}", 0))
+        start_for_target = sec["start_for_target"]
+        end_for_target = sec["end_for_target"]
+        section = DiskSection(label, start, end, start_for_target, end_for_target, get_property(disk, f"quality_{label}", 0))
         sections_list.append(section)
     return sections_list
 
@@ -823,7 +955,7 @@ def manually_set_spinning_wheel(context, spinning_wheel_obj, target_angle, durat
     current_angle = math.degrees(disk.rotation_euler.z)
     delta = (target_angle - current_angle + 180) % 360 - 180
     manual_angle = current_angle + delta  # closest equivalent to target_angle
-    #print(f"Manual set to: {manual_angle}")
+    print(f"Manual set to: {manual_angle} ({manual_angle % 360})")
     disk["start_manual_frame"] = context.frame_current + start_frame_offset
     disk["end_manual_frame"] = context.frame_current + start_frame_offset + duration_num_frames
     disk["starting_angle"] = math.degrees(disk.rotation_euler.z)
@@ -836,7 +968,7 @@ def spin_spinning_wheel(context, spinning_wheel_obj, target_angle=-9999.0, durat
     starting_angle = math.degrees(disk.rotation_euler.z)
     actual_target_angle = target_angle
     if actual_target_angle < -9990:
-        random.seed(context.frame_current)  # deterministic seed
+        random.seed(context.frame_current * 7183)  # deterministic seed
         actual_target_angle = random.uniform(0, 360)
         # print(f"spinner end angle set to: {actual_target_angle}")
     while actual_target_angle < starting_angle:
@@ -914,7 +1046,7 @@ def get_spinning_wheel_result(context, tile_obj):
     if disk is None or "sections" not in disk:
         return None
     sections = disk["sections"] # list of tuples: (start_angle, end_angle, label)
-    z_deg = ((math.degrees(disk.rotation_euler.z) + FLIPPER_DIRECTION) % 360)
+    z_deg = ((math.degrees(-disk.rotation_euler.z) + FLIPPER_DIRECTION) % 360)
     for sec in sections:
         start = sec["start"]
         end = sec["end"]
@@ -928,8 +1060,9 @@ def get_spinning_wheel_result(context, tile_obj):
     return None
 
 def get_spinning_wheel_chance_table(context, tile_obj):
-    chance_table = [(0.5,  "L"), (0.5,  "R")]
-    return chance_table
+    return context.chance_table
+    # chance_table = [(0.5,  "W"), (0.5,  "E")]
+    # return chance_table
 
 def get_spinning_wheel_at_tile(context, tile_obj):
     spinning_wheel = find_recursive(context, tile_obj, "spinning_wheel_base")
@@ -974,13 +1107,12 @@ def get_dice(context, auto_create = True):
 
 def throw_dice(context, duration_num_frames):
     dice = get_dice(context)
-    random.seed(context.frame_current)
+    random.seed(context.frame_current * 1523)
     dice["rot_axis_x"] = random.uniform(-180, 180)
     dice["rot_axis_y"] = random.uniform(-180, 180)
     dice["rot_axis_z"] = random.uniform(-180, 180)
     dice["starting_angle"] = random.uniform(0, 360)
     dice["landing_offset_angle"] = random.uniform(-20, 20)
-    random.seed(context.frame_current)  # deterministic seed
     dice["start_throw_frame"] = context.frame_current
     dice["end_throw_frame"] = context.frame_current + duration_num_frames
     dice["ends_at_spin"] = random.randint(1, 6) == 1
@@ -988,7 +1120,7 @@ def throw_dice(context, duration_num_frames):
 def get_tile_at_pos(context, abs_pos):
     closest_tile = None
     min_dist = float("inf")
-    tiles = find_recursive_list(context, context, "tile_")
+    tiles = find_recursive_list(context, context, "tile_", 3)
     for tile in tiles:
         if tile:
             tile_pos = tile.matrix_world.translation
@@ -1005,7 +1137,17 @@ def get_tile_at_guy(context):
     guy = get_guy(context)
     if not guy:
         return None
-    return get_tile_at_pos(context, guy.matrix_world.translation)
+    # floored_pos_x = int(math.floor(guy.matrix_world.translation.x))
+    # floored_pos_y = int(math.floor(guy.matrix_world.translation.y))
+    # floored_pos_z = int(math.floor(guy.matrix_world.translation.z))
+    # property_name = f"tile_at_{floored_pos_x}_{floored_pos_y}_{floored_pos_z}"
+    # if property_name in guy:
+    #     exact_tile_name = guy[property_name]
+    #     return context.global_scene.objects[exact_tile_name]
+    tile = get_tile_at_pos(context, guy.matrix_world.translation)
+    #if tile:
+    #    guy[property_name] = tile.name
+    return tile
 
 def get_spinning_wheel_at_guy(context):
     return get_spinning_wheel_at_tile(context, get_tile_at_guy(context))
@@ -1020,7 +1162,6 @@ def reward_guy(context, num_reward):
     guy = get_guy(context)
     new_reward_count = get_property(guy, "num_reward", 0) + num_reward
     guy["num_reward"] = new_reward_count
-    get_text_rewards(context).data.body = str(new_reward_count)
 
 def get_guy_prev_tile(context):
     guy = get_guy(context)
@@ -1040,11 +1181,12 @@ def closely_look_guy(context, duration_num_frames = 20):
     guy["start_closely_look_frame"] = context.frame_current
     guy["end_closely_look_frame"] = context.frame_current + duration_num_frames
 
-def jump_guy(context, direction_y, duration_num_frames = 11):
+def jump_guy(context, direction_x, direction_y, duration_num_frames = 11):
     guy = get_guy(context)
     pos_abs = get_world_location(guy)
     guy["start_jump_frame"] = context.frame_current
     guy["end_jump_frame"] = context.frame_current + duration_num_frames
+    guy["jump_direction_x"] = direction_x
     guy["jump_direction_y"] = direction_y
     guy["jump_starting_pos_x"] = guy.location.x
     guy["jump_starting_pos_y"] = guy.location.y
@@ -1057,12 +1199,16 @@ def lose_guy(context, duration_num_frames = 10):
     guy = get_guy(context)
     guy["lost_frame"] = context.frame_current
     guy["lost_frame_end"] = context.frame_current + duration_num_frames
-    
+    guy["num_losses"] = get_property(guy, "num_losses", 0) + 1
+    get_text_penalty(context).data.body = str(guy["num_losses"])
+
 def win_guy(context, duration_num_frames = 3):
     guy = get_guy(context)
     guy["win_frame"] = context.frame_current
     guy["win_frame_end"] = context.frame_current + duration_num_frames
-    
+    guy["num_wins"] = get_property(guy, "num_wins", 0) + 1
+    get_text_rewards(context).data.body = str(guy["num_wins"])
+
 def guy_won(context):
     guy = get_guy(context)
     return get_property(guy, "win_frame", -1) >= 0
@@ -1097,7 +1243,7 @@ def handle_lost_guy(context):
         starting_rot_y = get_guy_starting_pos(context).z
         target_rot_y = -90
         new_rot_y = starting_rot_y + (target_rot_y - starting_rot_y) * anim
-        guy.rotation_euler.y = math.radians(new_rot_y)
+        guy.rotation_euler.x = math.radians(-new_rot_y)
         guy.location.z = starting_rot_y + math.sin(anim * math.pi * 0.9) * 0.4
 
 def handle_closely_look_guy(context):
@@ -1109,7 +1255,7 @@ def handle_closely_look_guy(context):
     end_frame = get_property(guy, "end_closely_look_frame", -1)
     if start_frame >= 0:
         perc = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
-        head.rotation_euler.x = (math.cos(perc * math.pi * 2) - 1) * 0.3
+        head.rotation_euler.y = (math.cos(perc * math.pi * 2) - 1) * 0.3
 
 def handle_poke_guy(context):
     guy = get_guy(context)
@@ -1125,18 +1271,17 @@ def handle_poke_guy(context):
     diff_arm_right = Vector(get_world_location(arm_right) - poke_target)
     diff_arm_left  = Vector(get_world_location(arm_left)  - poke_target)
     distance = diff_arm_right.length
-    invert = True
     if diff_arm_left.length < diff_arm_right.length:
         arm_to_use = arm_left
         distance = diff_arm_left.length
-        z = get_world_up(guy).z
-        invert = z > 0.5 # when laying down. very hacky i dont know whats going on with that arm...
     #print(f"distance: {distance}, scale {get_world_scale(arm_to_use).z}")
-    point_object_to(poke_target, arm_to_use, "Z", "Y", invert)
+    point_object_to(poke_target, arm_to_use)
     arm_stretch_dist = 25
-    if abs(guy.rotation_euler.y) > EPS: # if guy is laying down
-        arm_stretch_dist = 12
+    if abs(guy.rotation_euler.x) > EPS: # if guy is laying down
+        arm_stretch_dist = 8
+    #print(f"stretch: {arm_stretch_dist}. euler: {guy.rotation_euler}")
     arm_to_use.scale.z = 1 + ((distance-1) * math.sin(anim*math.pi)) * arm_stretch_dist
+    #print(f"z scale: {arm_to_use.scale.z} ({distance}, {arm_stretch_dist})")
     if anim >= 1:
         guy.pop("start_poke_frame", None)
         reset_guy_arms(context, guy)
@@ -1148,42 +1293,49 @@ def handle_jump_guy(context):
 
     start_frame = guy["start_jump_frame"]
     end_frame = guy["end_jump_frame"]
+    direction_x = guy["jump_direction_x"]
     direction_y = guy["jump_direction_y"]
+    jump_starting_pos_x = guy["jump_starting_pos_x"]
     jump_starting_pos_y = guy["jump_starting_pos_y"]
     total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
 
     facing_direction = 0
     if direction_y > 0:
-        facing_direction = 180
+        facing_direction = 90
     if direction_y < 0:
-        facing_direction = 0
-    facing_direction_start = 90
+        facing_direction = -90
+    facing_direction_start = 0
 
     anim_turn          = remap(total_anim,  0, 0.3, 0, 1)
     anim_jump          = remap(total_anim,  0.3, 0.7, 0, 1)
     anim_turn_back     = remap(total_anim,  0.7, 1.0, 0, 1)
 
     target_y = jump_starting_pos_y - direction_y
-        
+    target_x = jump_starting_pos_x - direction_x
+
     if anim_turn >= 0 and anim_turn <= 1:
         guy.scale = (0.1, 0.1, 0.1 - anim_turn * 0.02)
         guy.rotation_euler.z = math.radians(facing_direction_start + (anim_turn * (facing_direction-facing_direction_start)))
     if anim_jump >= 0 and anim_jump <= 1:
         guy.scale = (0.1, 0.1, 0.1)
+        guy.location.x = jump_starting_pos_x + (target_x - jump_starting_pos_x) * anim_jump
         guy.location.y = jump_starting_pos_y + (target_y - jump_starting_pos_y) * anim_jump
         guy.location.z = get_guy_starting_pos(context).z + math.sin(anim_jump * math.pi)
         guy.rotation_euler.z = math.radians(facing_direction_start + (facing_direction-facing_direction_start))
     if anim_turn_back >= 0 and anim_turn_back <= 1:
         guy.scale = (0.1, 0.1, 0.08 + anim_turn_back * 0.02)
+        guy.location.x = target_x
         guy.location.y = target_y
         guy.location.z = get_guy_starting_pos(context).z
         guy.rotation_euler.z = math.radians(facing_direction_start + ((1-anim_turn_back) * (facing_direction-facing_direction_start)))
     if anim_turn_back >= 1:
+        guy.location.x = target_x
         guy.location.y = target_y
         guy.location.z = get_guy_starting_pos(context).z
         guy.rotation_euler.z = math.radians(facing_direction_start)
         guy.scale = (0.1, 0.1, 0.1)
         guy.pop("start_jump_frame", None)
+        guy.pop("jump_direction_x", None)
         guy.pop("jump_direction_y", None)
 
 def is_dice_on_spin(context):
@@ -1461,12 +1613,13 @@ def get_object_path(obj):
             break
     return "/".join(reversed(parts))
 
-def point_object_to(world_pos, obj, track_axis='Z', up_axis='Y', invert = False):
+def point_object_to_internal(world_pos, obj, track_axis='Z', up_axis='Y', invert = False):
     world_pos = Vector(world_pos)
 
     # Compute the direction from the object to the target
     obj_world_pos = obj.matrix_world.translation
     direction = world_pos - obj_world_pos
+
     if invert:
         direction = -direction
     if direction.length == 0:
@@ -1485,6 +1638,18 @@ def point_object_to(world_pos, obj, track_axis='Z', up_axis='Y', invert = False)
     # Preserve existing object rotation offset if needed
     obj.rotation_mode = 'QUATERNION'
     obj.rotation_quaternion = rot_local
+
+def point_object_to(world_pos, obj, track_axis='Z', up_axis='Y'):
+    obj_world_pos = obj.matrix_world.translation
+    direction = world_pos - obj_world_pos
+
+    point_object_to_internal(world_pos, obj, track_axis, up_axis, True)
+    forward = obj.matrix_world.to_quaternion() @ Vector((0, 0, 1))
+    diff = math.dist (direction.normalized(), forward)
+    #print(f"forward of {obj.name}: {forward}, diff {diff}")
+    #if diff > 1:
+    #    flip = mathutils.Quaternion(Vector((0, 1, 0)), math.pi)
+    #    obj.rotation_quaternion = obj.rotation_quaternion @ flip
 
 def set_axis_angle(obj, axis, angle_deg):
     axis = Vector(axis).normalized()
