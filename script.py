@@ -12,19 +12,20 @@ from mathutils import Vector
 bpy.app.handlers.frame_change_post.clear()
 
 STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
+GUY_POS_STATE_TILE_OFFSET = Vector((-0.2696, 0, 0.32991))
 
 EPS = 1e-6
 FLIPPER_DIRECTION = 90
 
 class SceneContext:
-    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos_offset = 0, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")]):
+    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")]):
         self.scene_obj = scene_obj
         self.global_scene = scene
         self.frame_current = scene.frame_current - 3 # hacky offset, initialization stuff...
         self.children = scene_obj.children
         self.name = scene_obj.name
         self.first_spinner_rotations = first_spinner_rotations
-        self.guy_starting_pos_offset = guy_starting_pos_offset
+        self.guy_starting_pos = guy_starting_pos
         self.parent = None
         self.obj_guy = None
         self.quality_multiplier = quality_multiplier # aka. alpha
@@ -36,19 +37,24 @@ class SceneContext:
 def handle_frame(scene):
     timer_start = time.perf_counter()
 
+
+
     configs = [
-        #("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), 0)),
+        #("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), STARTING_GUY_POS)),
         #("scene2", ()),
-        #("scene3", ((180, 180, 180, 180, 180), -2)),
-        #("scene4", ((0, 0, 0, 0, 0), 2, 0.4)),
+        #("scene3", ((180, 180, 180, 180, 180), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y - 2, STARTING_GUY_POS.z)))),
+        #("scene4", ((0, 0, 0, 0, 0), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + 2, STARTING_GUY_POS.z)), 0.4)),
         #("scene5", ((180, 0, 180, 180, 180, 0, 0, 180, 0, 0, 0), 0, 0.4)),
-        #("scene6", ((180), 0)),
-        #("scene7", ((180), 0, 0.3)),
-        #("scene8", ((), 0, 0.3)),
-        #("scene9", ((180, 180, 180, 180, 180, 180, 180), 0, 0.3, True)),
-        #("scene10", ((), 0, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((), 0, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+        #("scene6", ((180), STARTING_GUY_POS)),
+        #("scene7", ((180), STARTING_GUY_POS, 0.3)),
+        #("scene8", ((), STARTING_GUY_POS, 0.3)),
+        #("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.3, True)),
+        #("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+        ("scene11", ((), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
+
+#return Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + context.guy_starting_pos_offset, STARTING_GUY_POS.z))
+
 
     ctxs = []
 
@@ -344,6 +350,13 @@ def reset_scene11(context, first_time):
         start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
         if first_time:
             add_quality_bar_to_spinning_wheel(context, tile)
+    if first_time:
+        guy = get_guy(context)
+        snake_state = get_state_at_snake_head(context)
+        print(f"Snake state walls: {snake_state.walls}, apple dir: {snake_state.apple_dir}")
+        tile = find_state_tile(context, snake_state)
+        tile_pos = get_world_location(tile)
+        set_world_location(guy, tile_pos + GUY_POS_STATE_TILE_OFFSET)
 
 def handle_scene11(context):
     duration_multiplier = 1.0
@@ -351,8 +364,8 @@ def handle_scene11(context):
     checks = [
         # check function name,          duration
         #("check_pause",                 40),
-        # ("check_dice",                  25),
-        # ("check_compare_or_spin_wheel", 20),
+        ("check_dice",                  25),
+        ("check_compare_or_spin_wheel", 20),
         # ("check_jump_guy",              11),
         # ("check_reward_or_penalty",     5),
         # ("check_set_quality_by_poke",   10),
@@ -360,7 +373,7 @@ def handle_scene11(context):
         ("check_action_end",            1)
     ]
     handle_checks(context, checks, duration_multiplier)
-    # handle_dice(context)
+    handle_dice(context)
     # handle_jump_guy(context)
     # handle_poke_guy(context)
     # handle_closely_look_guy(context)
@@ -445,7 +458,8 @@ def check_pause(context, total_duration_num_frames, check_frame_index, check_dur
     pass
 
 def disk_has_equal_section_qualities(context):
-    disk_sections = get_disk_sections(context, get_tile_at_guy(context))
+    tile = get_tile_at_guy(context)
+    disk_sections = get_disk_sections(context, tile)
     disk_sections.sort(key=lambda s: s.quality, reverse=True)
     return abs(disk_sections[0].quality - disk_sections[-1].quality) < EPS
 
@@ -586,8 +600,7 @@ def get_target_rotation(context):
     return target_rotation
 
 def get_guy_starting_pos(context):
-    global STARTING_GUY_POS
-    return Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + context.guy_starting_pos_offset, STARTING_GUY_POS.z))
+    return context.guy_starting_pos
 
 def reset(context):
     guy = get_guy(context)
@@ -869,6 +882,27 @@ def calculate_new_quality(context, current_quality, desired_quality):
     new_quality = current_quality + (desired_quality - current_quality) * context.quality_multiplier
     return new_quality
 
+
+class SnakeState:
+    walls: int
+    apple_dir: int
+
+    @classmethod
+    def from_state_tile_obj_name(cls, obj_name: str):
+        if not obj_name.startswith("tile_state_"):
+            return None
+        parts = obj_name.split("_")
+        w = int(parts[2][1:])  # "w3" -> 3
+        a = int(parts[3][1:])  # "a2" -> 2
+        return cls(w, a)
+
+    def __init__(self, walls_param: int, apple_dir_param: int):
+        self.walls = walls_param
+        self.apple_dir = apple_dir_param
+
+    def state_tile_obj_name(self):
+        return f"tile_state_w{self.walls}_a{self.apple_dir}"
+
 class DiskSection:
     label: str
     angle_start: float
@@ -1099,7 +1133,7 @@ def get_spinning_wheel_at_tile(context, tile_obj):
     if spinning_wheel is None:
         # create new wheel then
         prefab_source = find_prefab(context, "spinning_wheel_base")
-        print(f"creating from {tile_obj.name}")
+        #print(f"creating from {tile_obj.name}")
         spinning_wheel = duplicate_object_with_children(prefab_source, tile_obj, False)
         #print(f"Generated spinner! {prefab_source} for {tile_obj.name}")
         setup_spinning_wheel(context, spinning_wheel, get_spinning_wheel_chance_table(context, tile_obj))
@@ -1147,10 +1181,79 @@ def throw_dice(context, duration_num_frames):
     dice["end_throw_frame"] = context.frame_current + duration_num_frames
     dice["ends_at_spin"] = random.randint(1, 6) == 1
 
-def get_tile_at_pos(context, abs_pos):
+def is_penalty_tile(tile_obj):
+    return "_pen" in tile_obj.name
+
+def get_snake_head(context: SceneContext):
+    return find_recursive(context, context, "snake")
+
+def get_state_at_snake_head(context: SceneContext):
+    snake_head = get_snake_head(context)
+    if not snake_head:
+        return None
+    play_board = find_recursive(context, context, "play_board")
+    tile        = get_tile_at_pos(context, snake_head.matrix_world.translation + Vector(( 0,  0, 0)), 2, play_board)
+    tile_north  = get_tile_at_pos(context, snake_head.matrix_world.translation + Vector((-1,  0, 0)), 2, play_board)
+    tile_south  = get_tile_at_pos(context, snake_head.matrix_world.translation + Vector(( 1,  0, 0)), 2, play_board)
+    tile_west   = get_tile_at_pos(context, snake_head.matrix_world.translation + Vector(( 0, -1, 0)), 2, play_board)
+    tile_east   = get_tile_at_pos(context, snake_head.matrix_world.translation + Vector(( 0,  1, 0)), 2, play_board)
+    apple       = find_recursive(context, play_board, "apple", False, 3)
+    snake_head_pos = get_world_location(snake_head)
+    apple_tile_pos = get_world_location(apple.parent)
+
+    tile_penalty       = is_penalty_tile(tile)
+    tile_north_penalty = is_penalty_tile(tile_north)
+    tile_south_penalty = is_penalty_tile(tile_south)
+    tile_west_penalty  = is_penalty_tile(tile_west)
+    tile_east_penalty  = is_penalty_tile(tile_east)
+
+    walls_state = 0
+    if tile_north_penalty:
+        walls_state = walls_state + 1
+    if tile_east_penalty:
+        walls_state = walls_state + 2
+    if tile_south_penalty:
+        walls_state = walls_state + 4
+    if tile_west_penalty:
+        walls_state = walls_state + 8
+
+    apple_dir_state = 0
+    apple_dist = math.dist(apple_tile_pos, snake_head_pos)
+    if apple_dist > 0:
+        dir = (apple_tile_pos - snake_head_pos) / apple_dist
+        dir_2d = Vector((dir.x, dir.y))
+        if dir_2d.x < -0.99:
+            apple_dir_state = 0
+        if dir_2d.x < -0.01 and dir_2d.y >  0.01:
+            apple_dir_state = 1
+        if dir_2d.y >  0.99:
+            apple_dir_state = 2
+        if dir_2d.x >  0.01 and dir_2d.y >  0.01:
+            apple_dir_state = 3
+        if dir_2d.x >  0.99:
+            apple_dir_state = 4
+        if dir_2d.x >  0.01 and dir_2d.y < -0.01:
+            apple_dir_state = 5
+        if dir_2d.y < -0.99:
+            apple_dir_state = 6
+        if dir_2d.x < -0.01 and dir_2d.y < -0.01:
+            apple_dir_state = 1
+    else:
+        print("apple_dist should not be 0!")
+
+    return SnakeState(walls_state, apple_dir_state)
+
+def find_state_tile(context, state: SnakeState):
+    name = state.state_tile_obj_name()
+    return context.global_scene.objects[name]
+
+def get_tile_at_pos(context, abs_pos, max_depth = 3, obj = None):
     closest_tile = None
     min_dist = float("inf")
-    tiles = find_recursive_list(context, context, "tile_", 3)
+    base_obj = obj
+    if base_obj is None:
+        base_obj = context
+    tiles = find_recursive_list(context, base_obj, "tile_", max_depth)
     for tile in tiles:
         if tile:
             tile_pos = tile.matrix_world.translation
@@ -1174,7 +1277,17 @@ def get_tile_at_guy(context):
     # if property_name in guy:
     #     exact_tile_name = guy[property_name]
     #     return context.global_scene.objects[exact_tile_name]
-    tile = get_tile_at_pos(context, guy.matrix_world.translation)
+
+    max_depth = 3
+    base_obj = context
+    thinking_board = find_recursive(context, context, "thinking_board", False, 3)
+    if thinking_board is not None:
+        base_obj = thinking_board
+        max_depth = 2
+
+    tile = get_tile_at_pos(context, guy.matrix_world.translation, max_depth, base_obj)
+    if tile is None:
+        print("ERROR: No tile under 'guy' found")
     #if tile:
     #    guy[property_name] = tile.name
     return tile
