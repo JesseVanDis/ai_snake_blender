@@ -34,6 +34,7 @@ class SceneContext:
         self.gamma = 0.8  # max bleedover value perc compared to neighbour
         self.chance_table = chance_table
 
+
 def handle_frame(scene):
     timer_start = time.perf_counter()
 
@@ -409,6 +410,8 @@ def init(context):
                 except Exception as e:
                     print(f"Delete failed: {e}")
 
+        context.scene_obj["spinning_wheels"] = list([])
+        print("Cleared list")
         guy.pop("num_actions_done", None)
         guy.pop("num_penalty", None)
         guy.pop("num_reward", None)
@@ -653,7 +656,12 @@ def get_text_rewards(context):
     return find_recursive(context, context, "score_rewards")
 
 def get_spinning_wheels(context):
-    return find_recursive_list(context, context, "spinning_wheel_base", 5)
+    if "spinning_wheels" in context.scene_obj:
+        retval = list(context.scene_obj["spinning_wheels"])
+        return retval
+    retval = []
+    return retval
+    #return find_recursive_list(context, context, "spinning_wheel_base", 5)
 
 def reset_guy_arms(context, guy):
     arm_left  = find_recursive(context, guy, "arm_left")
@@ -1100,7 +1108,8 @@ def handle_spinning_wheel(context, spinning_wheel_obj):
         disk.pop("start_spin_frame", None)
 
 def handle_spinning_wheels(context):
-    for spinning_wheel_obj in get_spinning_wheels(context):
+    spinning_wheels = get_spinning_wheels(context)
+    for spinning_wheel_obj in spinning_wheels:
         handle_spinning_wheel_origin(context, spinning_wheel_obj)
         handle_spinning_wheel(context, spinning_wheel_obj)
         handle_manual_wheel(context, spinning_wheel_obj)
@@ -1137,6 +1146,11 @@ def get_spinning_wheel_at_tile(context, tile_obj):
         spinning_wheel = duplicate_object_with_children(prefab_source, tile_obj, False)
         #print(f"Generated spinner! {prefab_source} for {tile_obj.name}")
         setup_spinning_wheel(context, spinning_wheel, get_spinning_wheel_chance_table(context, tile_obj))
+        wheels = []
+        if "spinning_wheels" in context.scene_obj:
+            wheels = list(context.scene_obj["spinning_wheels"])
+        wheels.append(spinning_wheel)
+        context.scene_obj["spinning_wheels"] = wheels
 
     return spinning_wheel
 
