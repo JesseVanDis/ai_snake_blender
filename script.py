@@ -47,6 +47,7 @@ def handle_frame(scene):
         #("scene8", ((), 0, 0.3)),
         #("scene9", ((180, 180, 180, 180, 180, 180, 180), 0, 0.3, True)),
         #("scene10", ((), 0, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+        ("scene11", ((), 0, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
 
     ctxs = []
@@ -336,6 +337,35 @@ def handle_scene10(context):
     handle_closely_look_guy(context)
     handle_win_guy(context)
     handle_lost_guy(context)
+    handle_spinning_wheels(context)
+
+def reset_scene11(context, first_time):
+    for tile in find_recursive_list(context, context, "tile_state_"):
+        start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
+        if first_time:
+            add_quality_bar_to_spinning_wheel(context, tile)
+
+def handle_scene11(context):
+    duration_multiplier = 1.0
+
+    checks = [
+        # check function name,          duration
+        #("check_pause",                 40),
+        # ("check_dice",                  25),
+        # ("check_compare_or_spin_wheel", 20),
+        # ("check_jump_guy",              11),
+        # ("check_reward_or_penalty",     5),
+        # ("check_set_quality_by_poke",   10),
+        ("check_pause",                 4),
+        ("check_action_end",            1)
+    ]
+    handle_checks(context, checks, duration_multiplier)
+    # handle_dice(context)
+    # handle_jump_guy(context)
+    # handle_poke_guy(context)
+    # handle_closely_look_guy(context)
+    # handle_win_guy(context)
+    # handle_lost_guy(context)
     handle_spinning_wheels(context)
 
 def handle_checks(context, checks, duration_multiplier):
@@ -892,18 +922,18 @@ def add_quality_at_disk_section(context, tile_obj, section_label, quality):
         for sec in sections:
             label = sec["label"]
             if label == section_label:
-                start = sec["start"]
-                end = sec["end"]
-                quality_bar_obj = find_recursive(context, disk, f"gen_quality_bar_base_{section_label}")
-                if quality_bar_obj is None:
-                    print(f"create for {section_label}")
-                    template = find_recursive(context, disk, "quality_bar_base")
-                    quality_bar_obj = duplicate_object_with_children(template, disk)
-                    quality_bar_obj.name = f"gen_quality_bar_base_{section_label}"
-                    make_object_and_children_visible_to_renderer(quality_bar_obj)
-                    quality_bar_obj["section_label"] = section_label
-                    quality_bar_obj.location = (0, 0, 0)
-                    quality_bar_obj.rotation_euler = (0, 0, math.radians(-90 + ((start+end)/2)))
+                #start = sec["start"]
+                #end = sec["end"]
+                # quality_bar_obj = find_recursive(context, disk, f"gen_quality_bar_base_{section_label}")
+                # if quality_bar_obj is None:
+                #     print(f"create for {section_label}")
+                #     template = find_recursive(context, disk, "quality_bar_base")
+                #     quality_bar_obj = duplicate_object_with_children(template, disk)
+                #     quality_bar_obj.name = f"gen_quality_bar_base_{section_label}"
+                #     make_object_and_children_visible_to_renderer(quality_bar_obj)
+                #     quality_bar_obj["section_label"] = section_label
+                #     quality_bar_obj.location = (0, 0, 0)
+                #     quality_bar_obj.rotation_euler = (0, 0, math.radians(-90 + ((start+end)/2)))
                 color_disk_section(context, disk, label, get_color_from_quality(new_quality))
                 break
 
