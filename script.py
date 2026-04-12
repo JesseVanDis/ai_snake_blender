@@ -69,6 +69,7 @@ def handle_frame(scene):
             init(ctx)
 
         delete_generated_meshes()
+        reset_snake(scene)
 
     if scene.frame_current == 1 or scene.frame_current == 2:
         for name, ctx in ctxs:
@@ -352,6 +353,7 @@ def reset_scene11(context, first_time):
         if first_time:
             add_quality_bar_to_spinning_wheel(context, tile)
     if first_time:
+        #reset_snake(context.global_scene)
         guy = get_guy(context)
         snake_state = get_state_at_snake_head(context)
         print(f"Snake state walls: {snake_state.walls}, apple dir: {snake_state.apple_dir}")
@@ -367,7 +369,8 @@ def handle_scene11(context):
         #("check_pause",                 40),
         ("check_dice",                  25),
         ("check_compare_or_spin_wheel", 20),
-        # ("check_jump_guy",              11),
+        ("check_jump_to_action_guy",    30),
+        ("check_snake_action",          30),
         # ("check_reward_or_penalty",     5),
         # ("check_set_quality_by_poke",   10),
         ("check_pause",                 4),
@@ -375,7 +378,8 @@ def handle_scene11(context):
     ]
     handle_checks(context, checks, duration_multiplier)
     handle_dice(context)
-    # handle_jump_guy(context)
+    handle_jump_to_action_guy(context)
+    handle_snake_action(context)
     # handle_poke_guy(context)
     # handle_closely_look_guy(context)
     # handle_win_guy(context)
@@ -530,6 +534,18 @@ def check_jump_guy(context, total_duration_num_frames, check_frame_index, check_
         if result == "S":
             jump_guy(context, 1, 0, check_duration_num_frames)
 
+def check_jump_to_action_guy(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    if (context.frame_current % total_duration_num_frames) == check_frame_index:
+        result = get_spinning_wheel_result(context, get_spinning_wheel_at_guy(context))
+        print(f"Spinning Wheel result: {result}")
+        jump_to_action_guy(context, result, check_duration_num_frames)
+
+def check_snake_action(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    if (context.frame_current % total_duration_num_frames) == check_frame_index:
+        guy = get_guy(context)
+        action = guy["jump_to_action_result"]
+        do_snake_action(context, action, check_duration_num_frames)
+
 def get_tile_penalty(context, tile):
     pen_match = re.search(r"_pen(\d+)", tile.name)
     if pen_match:
@@ -614,6 +630,7 @@ def reset(context):
     guy.rotation_euler.z = math.radians(0)
     guy.pop("start_jump_frame", None)
     guy.pop("start_poke_frame", None)
+    guy.pop("start_jump_to_action_frame", None)
     guy.pop("jump_direction_x", None)
     guy.pop("jump_direction_y", None)
     guy.pop("lost_frame", None)
@@ -629,11 +646,38 @@ def reset(context):
         dice_sub_base.hide_viewport = False
         dice_sub_base.hide_render = True
 
+    snake_head = get_snake_head(context)
+    if snake_head is not None:
+        guy.pop("action_frame_start", None)
+
     for spinning_wheel_obj in get_spinning_wheels(context):
         reset_spinning_wheel(context, spinning_wheel_obj)
     for apple in find_recursive_list(context, context, "apple"):
         apple.location = (0,0,0)
     context.scene_obj["reset_called"] = True
+
+def delete_tail(global_scene, starting_tail_obj):
+    if starting_tail_obj is None:
+        return
+    number = get_tail_number(starting_tail_obj.name)
+    delete_object_recursive(starting_tail_obj)
+    delete_tail(global_scene.objects.get(f"tail_{(number + 1)}"))
+
+def reset_snake(global_scene):
+    snake_head = global_scene.objects["snake"]
+    snake_head.location.x = -3
+    snake_head.location.y = -1
+    snake_head.location.z = 1
+    snake_head.rotation_euler.z = 0
+    tail_1 = global_scene.objects["tail_1"]
+    tail_1.location = snake_head.location
+    tail_1.location.x = tail_1.location.x + 1
+    tail_1.rotation_euler.z = 0
+    tail_2 = global_scene.objects["tail_2"]
+    tail_2.location = tail_1.location
+    tail_2.location.x = tail_2.location.x + 1
+    tail_2.rotation_euler.z = 0
+    delete_tail(global_scene, global_scene.objects.get("tail_3"))
 
 def pop_reset_called(context):
     called = get_property(context.scene_obj, "reset_called", False)
@@ -1259,7 +1303,7 @@ def get_state_at_snake_head(context: SceneContext):
 
 def find_state_tile(context, state: SnakeState):
     name = state.state_tile_obj_name()
-    return context.global_scene.objects[name]
+    return context.global_scene.objects.get(name)
 
 def get_tile_at_pos(context, abs_pos, max_depth = 3, obj = None):
     closest_tile = None
@@ -1351,6 +1395,47 @@ def jump_guy(context, direction_x, direction_y, duration_num_frames = 11):
     guy["jump_starting_abs_pos_x"] = pos_abs.x
     guy["jump_starting_abs_pos_y"] = pos_abs.y
     guy["jump_starting_abs_pos_z"] = pos_abs.z
+
+def jump_to_action_guy(context, result, duration_num_frames = 11):
+    guy = get_guy(context)
+    pos_abs = get_world_location(guy)
+    guy["start_jump_to_action_frame"] = context.frame_current
+    guy["end_jump_to_action_frame"] = context.frame_current + duration_num_frames
+    guy["jump_to_action_result"] = result
+    guy["jump_to_action_starting_pos_x"] = guy.location.x
+    guy["jump_to_action_starting_pos_y"] = guy.location.y
+    guy["jump_to_action_starting_pos_z"] = guy.location.z
+    guy["jump_to_action_starting_abs_pos_x"] = pos_abs.x
+    guy["jump_to_action_starting_abs_pos_y"] = pos_abs.y
+    guy["jump_to_action_starting_abs_pos_z"] = pos_abs.z
+
+def get_tail_number(name):
+    number = int(name.split("_")[-1])
+    return number
+
+def do_snake_tail_action(context, source, tail, action, duration_num_frames = 20):
+    number = get_tail_number(tail.name)
+    next_tail = context.global_scene.objects.get(f"tail_{(number+1)}")
+    tail["tail_action_frame_start"] = context.frame_current
+    tail["tail_action_frame_end"] = context.frame_current + duration_num_frames
+    tail["tail_action_starting_pos_x"] = round(tail.location.x)
+    tail["tail_action_starting_pos_y"] = round(tail.location.y)
+    tail["tail_action_starting_pos_z"] = round(tail.location.z)
+    tail["tail_action_ending_pos_x"] = round(source.location.x)
+    tail["tail_action_ending_pos_y"] = round(source.location.y)
+    tail["tail_action_ending_pos_z"] = round(source.location.z)
+    if next_tail:
+        do_snake_tail_action(context, tail, next_tail, action, duration_num_frames)
+
+def do_snake_action(context, action, duration_num_frames = 20):
+    snake_head = get_snake_head(context)
+    snake_head["action_frame_start"] = context.frame_current
+    snake_head["action_frame_end"] = context.frame_current + duration_num_frames
+    snake_head["action_starting_pos_x"] = round(snake_head.location.x)
+    snake_head["action_starting_pos_y"] = round(snake_head.location.y)
+    snake_head["action_starting_pos_z"] = round(snake_head.location.z)
+    snake_head["action_action"] = action
+    do_snake_tail_action(context, snake_head, context.global_scene.objects["tail_1"], action, duration_num_frames)
 
 def lose_guy(context, duration_num_frames = 10):
     guy = get_guy(context)
@@ -1495,6 +1580,117 @@ def handle_jump_guy(context):
         guy.pop("start_jump_frame", None)
         guy.pop("jump_direction_x", None)
         guy.pop("jump_direction_y", None)
+
+def handle_jump_to_action_guy(context):
+    guy = get_guy(context)
+    if guy is None or "start_jump_to_action_frame" not in guy:
+        return None
+    start_frame = guy["start_jump_to_action_frame"]
+    end_frame = guy["end_jump_to_action_frame"]
+    wheel_result = guy["jump_to_action_result"]
+    jump_starting_abs_pos_x = guy["jump_to_action_starting_abs_pos_x"]
+    jump_starting_abs_pos_y = guy["jump_to_action_starting_abs_pos_y"]
+    total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+
+    facing_direction = 0
+    facing_direction_start = 0
+    jump_height = 10
+
+    anim_turn          = remap(total_anim,  0, 0.3, 0, 1)
+    anim_jump          = remap(total_anim,  0.3, 0.7, 0, 1)
+    anim_turn_back     = remap(total_anim,  0.7, 1.0, 0, 1)
+
+    result_tile_name = f"tile_move_{wheel_result}".lower()
+    result_tile = context.global_scene.objects.get(result_tile_name)
+    if result_tile is None:
+        print(f"Failed to find tile of exact name '{result_tile_name}'")
+
+    target_y = get_world_location(result_tile).y
+    target_x = get_world_location(result_tile).x
+
+    #print(f"Jumping to tile '{result_tile_name}' at {target_x}, {target_y}")
+
+    if anim_turn >= 0 and anim_turn <= 1:
+        guy.scale = (0.1, 0.1, 0.1 - anim_turn * 0.02)
+        guy.rotation_euler.z = math.radians(facing_direction_start + (anim_turn * (facing_direction-facing_direction_start)))
+    if anim_jump >= 0 and anim_jump <= 1:
+        guy.scale = (0.1, 0.1, 0.1)
+        new_pos = Vector((jump_starting_abs_pos_x + (target_x - jump_starting_abs_pos_x) * anim_jump,
+                          jump_starting_abs_pos_y + (target_y - jump_starting_abs_pos_y) * anim_jump,
+                          get_guy_starting_pos(context).z + math.sin(anim_jump * math.pi) * jump_height))
+        set_world_location(guy, new_pos)
+        guy.rotation_euler.z = math.radians(facing_direction_start + (facing_direction-facing_direction_start))
+    if anim_turn_back >= 0 and anim_turn_back <= 1:
+        guy.scale = (0.1, 0.1, 0.08 + anim_turn_back * 0.02)
+        new_pos = Vector((target_x,
+                          target_y,
+                          get_guy_starting_pos(context).z))
+        set_world_location(guy, new_pos)
+        guy.rotation_euler.z = math.radians(facing_direction_start + ((1-anim_turn_back) * (facing_direction-facing_direction_start)))
+    if anim_turn_back >= 1:
+        new_pos = Vector((target_x,
+                          target_y,
+                          get_guy_starting_pos(context).z))
+        set_world_location(guy, new_pos)
+        guy.rotation_euler.z = math.radians(facing_direction_start)
+        guy.scale = (0.1, 0.1, 0.1)
+        guy.pop("start_jump_to_action_frame", None)
+
+def handle_snake_action_tail(context, tail):
+    number = get_tail_number(tail.name)
+    start_frame    = tail["tail_action_frame_start"]
+    end_frame      = tail["tail_action_frame_end"]
+    starting_pos_x = tail["tail_action_starting_pos_x"]
+    starting_pos_y = tail["tail_action_starting_pos_y"]
+    ending_pos_x   = tail["tail_action_ending_pos_x"]
+    ending_pos_y   = tail["tail_action_ending_pos_y"]
+    total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+    new_pos_x = starting_pos_x + (ending_pos_x - starting_pos_x) * total_anim
+    new_pos_y = starting_pos_y + (ending_pos_y - starting_pos_y) * total_anim
+    tail.location.x = new_pos_x
+    tail.location.y = new_pos_y
+    next_tail = context.global_scene.objects.get(f"tail_{(number+1)}")
+    if next_tail:
+        handle_snake_action_tail(context, next_tail)
+
+def handle_snake_action(context):
+    snake_head = get_snake_head(context)
+    if snake_head is None or "action_frame_start" not in snake_head:
+        return None
+
+    start_frame = snake_head["action_frame_start"]
+    end_frame = snake_head["action_frame_end"]
+    starting_pos_x = snake_head["action_starting_pos_x"]
+    starting_pos_y = snake_head["action_starting_pos_y"]
+    action = snake_head["action_action"]
+
+    total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+    dir_x = 0
+    dir_y = 0
+    if action.lower() == "w":
+        dir_x = 0
+        dir_y = 1
+    if action.lower() == "e":
+        dir_x = 0
+        dir_y = -1
+    if action.lower() == "n":
+        dir_x = 1
+        dir_y = 0
+    if action.lower() == "s":
+        dir_x = -1
+        dir_y = 0
+
+    ending_pos_x = (starting_pos_x + dir_x)
+    ending_pos_y = (starting_pos_y + dir_y)
+
+    new_pos_x = starting_pos_x + (ending_pos_x - starting_pos_x) * total_anim
+    new_pos_y = starting_pos_y + (ending_pos_y - starting_pos_y) * total_anim
+
+    print(f"posx: {new_pos_x}, posy: {new_pos_y} | {total_anim} | {starting_pos_x}, {starting_pos_y}")
+    snake_head.location.x = new_pos_x
+    snake_head.location.y = new_pos_y
+
+    handle_snake_action_tail(context, context.global_scene.objects["tail_1"])
 
 def is_dice_on_spin(context):
     dice = get_dice(context, False)
@@ -1697,7 +1893,7 @@ def find_recursive(context, obj, name, allow_prefab = False, max_depth = 10):
     if is_generator_object:
         last_find_result_name = get_property(obj, f"last_find_result_of_{name}", "")
         if last_find_result_name != "":
-            return context.global_scene.objects[last_find_result_name]
+            return context.global_scene.objects.get(last_find_result_name)
 
     result = None
     if internal_is_match(obj, name):
