@@ -369,9 +369,10 @@ def handle_scene11(context):
         #("check_pause",                 40),
         ("check_dice",                  25),
         ("check_compare_or_spin_wheel", 20),
-        ("check_jump_to_action_guy",    30),
-        ("check_snake_action",          30),
+        ("check_jump_to_action_guy",    40),
+        ("check_snake_action",          10),
         # ("check_reward_or_penalty",     5),
+        ("check_jump_to_state_guy",     40),
         # ("check_set_quality_by_poke",   10),
         ("check_pause",                 4),
         ("check_action_end",            1)
@@ -380,6 +381,9 @@ def handle_scene11(context):
     handle_dice(context)
     handle_jump_to_action_guy(context)
     handle_snake_action(context)
+    # handle_win_guy(context)
+    # handle_lost_guy(context)
+    handle_jump_to_state_guy(context)
     # handle_poke_guy(context)
     # handle_closely_look_guy(context)
     # handle_win_guy(context)
@@ -534,11 +538,16 @@ def check_jump_guy(context, total_duration_num_frames, check_frame_index, check_
         if result == "S":
             jump_guy(context, 1, 0, check_duration_num_frames)
 
-def check_jump_to_action_guy(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+def check_jump_to_action_guy(context, total_duration_num_frames, check_frame_index, duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         result = get_spinning_wheel_result(context, get_spinning_wheel_at_guy(context))
         print(f"Spinning Wheel result: {result}")
-        jump_to_action_guy(context, result, check_duration_num_frames)
+        jump_to_action_guy(context, result, duration_num_frames)
+
+def check_jump_to_action_guy(context, total_duration_num_frames, check_frame_index, duration_num_frames):
+    if (context.frame_current % total_duration_num_frames) == check_frame_index:
+        new_state = get_state_at_snake_head(context)
+        jump_to_state_guy(context, new_state, duration_num_frames)
 
 def check_snake_action(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
