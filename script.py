@@ -370,15 +370,16 @@ def handle_scene11(context):
     checks = [
         # check function name,          duration
         #("check_pause",                 40),
-        ("check_dice",                       25),
-        ("check_compare_or_spin_wheel",      20),
-        ("check_jump_to_action_guy",         30),
-        ("check_snake_action",               10),
-        ("check_reward_or_penalty_as_snake", 10),
-        ("check_jump_to_state_guy",          40),
-        # ("check_set_quality_by_poke",      10),
-        ("check_pause",                      4),
-        ("check_action_end",                 1)
+        ("check_dice",                            25),
+        ("check_compare_or_spin_wheel",           20),
+        ("check_jump_to_action_guy",              30),
+        ("check_snake_action",                    10),
+        ("check_reward_or_penalty_as_snake",      10),
+        ("check_set_quality_by_poke_from_action", 10),
+        ("check_jump_to_state_guy",               40),
+        # ("check_set_quality_by_poke",           10),
+        ("check_pause",                           4),
+        ("check_action_end",                      1)
     ]
 
     handle_checks(context, checks, duration_multiplier)
@@ -388,7 +389,7 @@ def handle_scene11(context):
     handle_win_guy(context)
     handle_lost_guy(context)
     handle_jump_to_state_guy(context)
-    # handle_poke_guy(context)
+    handle_poke_guy(context)
     # handle_closely_look_guy(context)
     # handle_win_guy(context)
     # handle_lost_guy(context)
@@ -457,6 +458,20 @@ def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_in
         tile_previous = get_guy_prev_tile(context)
         penalty_or_reward = get_tile_penalty_or_reward(context, tile_current)
         if penalty_or_reward != 0:
+            prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
+            add_quality_at_disk_section(context, get_guy_prev_tile(context), prev_tile_result, penalty_or_reward)
+
+def check_set_quality_by_poke_from_action(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    if (context.frame_current % total_duration_num_frames) == check_frame_index:
+        if guy_got_reward_or_penalty(context):
+            poke_guy_prev_tile(context, check_duration_num_frames)
+
+    if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
+        tile_current = get_tile_at_snake_head(context)
+        tile_previous = get_guy_prev_action_tile(context)
+        penalty_or_reward = get_tile_penalty_or_reward(context, tile_current)
+        if penalty_or_reward != 0:
+            print(f"Apply! to tile {tile_previous.name}")
             prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
             add_quality_at_disk_section(context, get_guy_prev_tile(context), prev_tile_result, penalty_or_reward)
 
@@ -554,8 +569,10 @@ def check_jump_to_action_guy(context, total_duration_num_frames, check_frame_ind
 
 def check_jump_to_state_guy(context, total_duration_num_frames, check_frame_index, duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
-        new_state = get_state_at_snake_head(context)
-        jump_to_state_guy(context, new_state, duration_num_frames)
+        lost_frame = get_property(get_guy(context), "lost_frame", -1)
+        if lost_frame < 0: # don't do anything if he lost...
+            new_state = get_state_at_snake_head(context)
+            jump_to_state_guy(context, new_state, duration_num_frames)
 
 def check_snake_action(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -599,9 +616,7 @@ def check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         tile = None
         if as_snake:
-            snake_head = get_snake_head(context)
-            play_board = find_recursive(context, context, "play_board")
-            tile = get_tile_at_pos(context, get_world_location(snake_head), 2, play_board)
+            tile = get_tile_at_snake_head(context)
         else:
             tile = get_tile_at_guy(context)
         #print(f"Checking tile {tile.name}")
@@ -632,7 +647,9 @@ def check_action_end(context, total_duration_num_frames, check_frame_index, chec
             reset(context)
 
 def guy_got_reward_or_penalty(context):
-    tile = get_tile_at_guy(context)
+    tile = get_tile_at_snake_head(context)
+    if tile is None:
+        tile = get_tile_at_guy(context)
     return get_tile_penalty_or_reward(context, tile) != 0
 
 def get_target_rotation(context):
@@ -761,8 +778,12 @@ def reset_spinning_wheel(context, spinning_wheel_obj):
     disk.pop("starting_angle", None)
     disk.pop("target_angle", None)
     origin = find_recursive(context, spinning_wheel_obj, "spinning_wheel_origin")
+    origin.parent.pop("start_drop_frame", None)
+    origin.parent.pop("start_spin_frame", None)
+    origin.parent.pop("start_manual_frame", None)
     origin.pop("start_drop_frame", None)
     origin.pop("end_drop_frame", None)
+    origin.parent.pop("start_pick_frame", None)
     origin.pop("start_pick_frame", None)
     origin.pop("end_pick_frame", None)
     origin.scale = (0, 0, 0)
@@ -1096,8 +1117,8 @@ def handle_spinning_wheel_flipper(context, spinning_wheel_obj, snap_strength=5.0
     flipper_angle = (-math.pow((1/(math.pow((frames_since_hit)*1, 4)+1)), 4)) * 0.7 + math.pi # https://www.desmos.com/calculator/xycbiyqqzs?lang=nl
     flipper.rotation_euler.z = flipper_angle
     
-def manually_set_spinning_wheel(context, spinning_wheel_obj, target_angle, duration_num_frames=40, start_frame_offset = 0):
-    disk = get_disk(context, spinning_wheel_obj)
+def manually_set_spinning_wheel(context, spinning_wheel_base_obj, target_angle, duration_num_frames=40, start_frame_offset = 0):
+    disk = get_disk(context, spinning_wheel_base_obj)
     if disk is None:
         return
     current_angle = math.degrees(disk.rotation_euler.z)
@@ -1105,6 +1126,7 @@ def manually_set_spinning_wheel(context, spinning_wheel_obj, target_angle, durat
     manual_angle = current_angle + delta  # closest equivalent to target_angle
     print(f"Manual set to: {manual_angle} ({manual_angle % 360})")
     disk["start_manual_frame"] = context.frame_current + start_frame_offset
+    spinning_wheel_base_obj["start_manual_frame"] = context.frame_current + start_frame_offset # also apply here as its faster to read
     disk["end_manual_frame"] = context.frame_current + start_frame_offset + duration_num_frames
     disk["starting_angle"] = math.degrees(disk.rotation_euler.z)
     disk["manual_angle"] = manual_angle
@@ -1123,8 +1145,8 @@ def is_valid_choice(context, label):
     print(f"checking if label '{label}' is valid: label_dir: {action_dir}, tail_dir: {tail_dir}, dist: {dist}. valid: {dist > 0.2}")
     return dist > 0.2
 
-def spin_spinning_wheel(context, spinning_wheel_obj, target_angle=-9999.0, duration_num_frames=40, min_turns=1):
-    disk = get_disk(context, spinning_wheel_obj)
+def spin_spinning_wheel(context, spinning_wheel_base_obj, target_angle=-9999.0, duration_num_frames=40, min_turns=1):
+    disk = get_disk(context, spinning_wheel_base_obj)
     if disk is None:
         return
     starting_angle = math.degrees(disk.rotation_euler.z)
@@ -1143,66 +1165,77 @@ def spin_spinning_wheel(context, spinning_wheel_obj, target_angle=-9999.0, durat
         print(f"Invalid choice, adding 10 degrees. now target angle: {actual_target_angle}")
     print(f"target angle: {actual_target_angle}")
     disk["start_spin_frame"] = context.frame_current
+    spinning_wheel_base_obj["start_spin_frame"] = context.frame_current # also apply on base, as its faster to read
     disk["end_spin_frame"] = context.frame_current + duration_num_frames
     disk["starting_angle"] = math.degrees(disk.rotation_euler.z)
     disk["target_angle"] = actual_target_angle
 
 def handle_spinning_wheel_origin(context, spinning_wheel_obj):
-    origin = find_recursive(context, spinning_wheel_obj, "spinning_wheel_origin")
-    if origin is not None and "start_drop_frame" in origin:
-        start_drop_frame = origin["start_drop_frame"]
-        end_drop_frame = origin["end_drop_frame"]
-        if start_drop_frame != end_drop_frame:
-            anim_perc = min(max((context.frame_current - start_drop_frame) / (end_drop_frame - start_drop_frame), 0), 1)
-            origin.scale = (anim_perc, anim_perc, anim_perc)
-            if anim_perc >= 1:
-                origin.pop("start_drop_frame", None)
-                origin.pop("end_drop_frame", None)
-    if origin is not None and "start_pick_frame" in origin:
-        start_drop_frame = origin["start_pick_frame"]
-        end_drop_frame = origin["end_pick_frame"]
-        if start_drop_frame != end_drop_frame:
-            anim_perc = min(max((context.frame_current - start_drop_frame) / (end_drop_frame - start_drop_frame), 0), 1)
-            origin.scale = (1-anim_perc, 1-anim_perc, 1-anim_perc)
-            if anim_perc >= 1:
-                origin.pop("start_pick_frame", None)
-                origin.pop("end_pick_frame", None)
-                origin.hide_render = True
+    if "start_drop_frame" in spinning_wheel_obj:
+        origin = find_recursive(context, spinning_wheel_obj, "spinning_wheel_origin", False, 2)
+        if origin is not None and "start_drop_frame" in origin:
+            start_drop_frame = origin["start_drop_frame"]
+            end_drop_frame = origin["end_drop_frame"]
+            if start_drop_frame != end_drop_frame:
+                anim_perc = min(max((context.frame_current - start_drop_frame) / (end_drop_frame - start_drop_frame), 0), 1)
+                origin.scale = (anim_perc, anim_perc, anim_perc)
+                if anim_perc >= 1:
+                    spinning_wheel_obj.pop("start_drop_frame", None)
+                    origin.pop("start_drop_frame", None)
+                    origin.pop("end_drop_frame", None)
 
-def handle_manual_wheel(context, spinning_wheel_obj):
-    disk = get_disk(context, spinning_wheel_obj)
-    if disk is None or "start_manual_frame" not in disk:
-        return None
-    start_frame = disk["start_manual_frame"]
-    end_frame = disk["end_manual_frame"]
-    start_angle = disk["starting_angle"]
-    target_angle = disk["manual_angle"]
-    perc = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
-    disk.rotation_euler.z = math.radians(start_angle + (target_angle - start_angle) * perc)
-    disk.location.z = math.sin(perc * math.pi) * 0.2
-    if perc >= 1.0:
-        disk.pop("start_manual_frame", None)
+    if "start_pick_frame" in spinning_wheel_obj:
+        origin = find_recursive(context, spinning_wheel_obj, "spinning_wheel_origin", False, 2)
+        if origin is not None and "start_pick_frame" in origin:
+            start_drop_frame = origin["start_pick_frame"]
+            end_drop_frame = origin["end_pick_frame"]
+            if start_drop_frame != end_drop_frame:
+                anim_perc = min(max((context.frame_current - start_drop_frame) / (end_drop_frame - start_drop_frame), 0), 1)
+                origin.scale = (1-anim_perc, 1-anim_perc, 1-anim_perc)
+                if anim_perc >= 1:
+                    spinning_wheel_obj.pop("start_pick_frame", None)
+                    origin.pop("start_pick_frame", None)
+                    origin.pop("end_pick_frame", None)
+                    origin.hide_render = True
 
-def handle_spinning_wheel(context, spinning_wheel_obj):
-    disk = get_disk(context, spinning_wheel_obj)
-    if disk is None or "start_spin_frame" not in disk:
-        return None
-    starting_angle = disk["starting_angle"]
-    target_angle = disk["target_angle"]
-    start_spin_frame = disk["start_spin_frame"]
-    end_spin_frame = (disk["end_spin_frame"] - 1)
-    if starting_angle == target_angle or start_spin_frame == end_spin_frame:
-        return
-    if end_spin_frame <= start_spin_frame:
-        disk.rotation_euler.z = math.radians(target_angle)
-        return
-    perc = max(0, min((context.frame_current - start_spin_frame) / (end_spin_frame - start_spin_frame), 1), 0)
-    perc_anim = math.sin((perc)*(math.pi/2))
-    disk.rotation_euler.z = math.radians(starting_angle + (target_angle - starting_angle) * perc_anim)
-    #print(f"setting disk to target angle: {target_angle}. current angle: {math.degrees(disk.rotation_euler.z)}. label: {get_spinning_wheel_result(context, disk)}")
-    handle_spinning_wheel_flipper(context, spinning_wheel_obj)
-    if perc_anim >= 1:
-        disk.pop("start_spin_frame", None)
+def handle_manual_wheel(context, spinning_wheel_base_obj):
+    if "start_manual_frame" in spinning_wheel_base_obj:
+        disk = get_disk(context, spinning_wheel_base_obj)
+        if disk is None or "start_manual_frame" not in disk:
+            return None
+        start_frame = disk["start_manual_frame"]
+        end_frame = disk["end_manual_frame"]
+        start_angle = disk["starting_angle"]
+        target_angle = disk["manual_angle"]
+        perc = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+        disk.rotation_euler.z = math.radians(start_angle + (target_angle - start_angle) * perc)
+        disk.location.z = math.sin(perc * math.pi) * 0.2
+        if perc >= 1.0:
+            disk.pop("start_manual_frame", None)
+            spinning_wheel_base_obj.pop("start_manual_frame", None)
+
+def handle_spinning_wheel(context, spinning_wheel_base_obj):
+    if "start_spin_frame" in spinning_wheel_base_obj:
+        disk = get_disk(context, spinning_wheel_base_obj)
+        if disk is None or "start_spin_frame" not in disk:
+            return None
+        starting_angle = disk["starting_angle"]
+        target_angle = disk["target_angle"]
+        start_spin_frame = disk["start_spin_frame"]
+        end_spin_frame = (disk["end_spin_frame"] - 1)
+        if starting_angle == target_angle or start_spin_frame == end_spin_frame:
+            return
+        if end_spin_frame <= start_spin_frame:
+            disk.rotation_euler.z = math.radians(target_angle)
+            return
+        perc = max(0, min((context.frame_current - start_spin_frame) / (end_spin_frame - start_spin_frame), 1), 0)
+        perc_anim = math.sin((perc)*(math.pi/2))
+        disk.rotation_euler.z = math.radians(starting_angle + (target_angle - starting_angle) * perc_anim)
+        #print(f"setting disk to target angle: {target_angle}. current angle: {math.degrees(disk.rotation_euler.z)}. label: {get_spinning_wheel_result(context, disk)}")
+        handle_spinning_wheel_flipper(context, spinning_wheel_base_obj)
+        if perc_anim >= 1:
+            spinning_wheel_base_obj.pop("start_spin_frame", None)
+            disk.pop("start_spin_frame", None)
 
 def handle_spinning_wheels(context):
     spinning_wheels = get_spinning_wheels(context)
@@ -1257,17 +1290,21 @@ def get_spinning_wheel_at_tile(context, tile_obj):
 
 def start_drop_down_spinning_wheel_animation(context, spinning_wheel_obj, duration_num_frames=5):
     origin = find_recursive(context, spinning_wheel_obj, "spinning_wheel_origin")
+    base = find_recursive(context, spinning_wheel_obj, "spinning_wheel_base") # base is quicker to read... so also write the values there
     origin.hide_render = False
     if duration_num_frames > 0:
         origin["start_drop_frame"] = context.frame_current
         origin["end_drop_frame"] = context.frame_current + duration_num_frames
+        base["start_drop_frame"] = context.frame_current
     else:
         origin.scale = (1,1,1)
 
 def start_pick_up_spinning_wheel_animation(context, spinning_wheel_obj, duration_num_frames=5):
     origin = find_recursive(context, spinning_wheel_obj, "spinning_wheel_origin")
+    base = find_recursive(context, spinning_wheel_obj, "spinning_wheel_base") # base is quicker to read... so also write the values there
     origin["start_pick_frame"] = context.frame_current
     origin["end_pick_frame"] = context.frame_current + duration_num_frames
+    base["start_pick_frame"] = context.frame_current
     return context.frame_current + duration_num_frames
 
 def get_dice(context, auto_create = True):
@@ -1410,6 +1447,14 @@ def get_tile_at_guy(context):
     #    guy[property_name] = tile.name
     return tile
 
+def get_tile_at_snake_head(context):
+    snake_head = get_snake_head(context)
+    play_board = find_recursive(context, context, "play_board")
+    if play_board is None:
+        return None
+    tile = get_tile_at_pos(context, get_world_location(snake_head), 2, play_board)
+    return tile
+
 def get_spinning_wheel_at_guy(context):
     return get_spinning_wheel_at_tile(context, get_tile_at_guy(context))
 
@@ -1428,6 +1473,13 @@ def get_guy_prev_tile(context):
     guy = get_guy(context)
     prev_guy_pos = Vector((get_property(guy, "jump_starting_abs_pos_x", guy.location.x), get_property(guy, "jump_starting_abs_pos_y", guy.location.y), get_property(guy, "jump_starting_abs_pos_z", guy.location.z)))
     return get_tile_at_pos(context, prev_guy_pos)
+
+def get_guy_prev_action_tile(context):
+    guy = get_guy(context)
+    prev_guy_pos = Vector((get_property(guy, "jump_starting_abs_pos_x", guy.location.x), get_property(guy, "jump_starting_abs_pos_y", guy.location.y), get_property(guy, "jump_starting_abs_pos_z", guy.location.z)))
+    play_board = find_recursive(context, context, "play_board")
+    tile = get_tile_at_pos(context, prev_guy_pos, 2, play_board)
+    return tile
 
 def poke_guy_prev_tile(context, duration_num_frames):
     guy = get_guy(context)
@@ -1465,9 +1517,9 @@ def jump_to_action_guy(context, result, duration_num_frames = 11):
     guy["jump_to_action_starting_pos_x"] = guy.location.x
     guy["jump_to_action_starting_pos_y"] = guy.location.y
     guy["jump_to_action_starting_pos_z"] = guy.location.z
-    guy["jump_to_action_starting_abs_pos_x"] = pos_abs.x
-    guy["jump_to_action_starting_abs_pos_y"] = pos_abs.y
-    guy["jump_to_action_starting_abs_pos_z"] = pos_abs.z
+    guy["jump_starting_abs_pos_x"] = pos_abs.x
+    guy["jump_starting_abs_pos_y"] = pos_abs.y
+    guy["jump_starting_abs_pos_z"] = pos_abs.z
 
 def jump_to_state_guy(context, new_state, duration_num_frames = 40):
     guy = get_guy(context)
@@ -1580,7 +1632,9 @@ def handle_poke_guy(context):
     start_frame = guy["start_poke_frame"]
     end_frame = guy["end_poke_frame"]
     poke_target = Vector((guy["poke_target_x"], guy["poke_target_y"], guy["poke_target_z"]))
+    #print(f"Getting Poke abs location: {poke_target}")
     anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+    #print(f"Poke anim: {anim}")
     arm_left = find_recursive(context, guy, "arm_left")
     arm_right = find_recursive(context, guy, "arm_right")
     arm_to_use = arm_right
@@ -1702,8 +1756,8 @@ def handle_jump_to_action_guy(context):
     start_frame = guy["start_jump_to_action_frame"]
     end_frame = guy["end_jump_to_action_frame"]
     wheel_result = guy["jump_to_action_result"]
-    jump_starting_abs_pos_x = guy["jump_to_action_starting_abs_pos_x"]
-    jump_starting_abs_pos_y = guy["jump_to_action_starting_abs_pos_y"]
+    jump_starting_abs_pos_x = guy["jump_starting_abs_pos_x"]
+    jump_starting_abs_pos_y = guy["jump_starting_abs_pos_y"]
 
     result_tile_name = f"tile_move_{wheel_result}".lower()
     result_tile = context.global_scene.objects.get(result_tile_name)
@@ -1737,7 +1791,7 @@ def handle_jump_to_state_guy(context):
     jump_starting_abs_pos_y = guy["jump_to_state_starting_abs_pos_y"]
 
     tile_name = state.state_tile_obj_name()
-    print(f"Jumping to '{tile_name}'")
+    #print(f"Jumping to '{tile_name}'")
     target_tile = context.global_scene.objects.get(tile_name)
     if target_tile is None:
         print(f"Failed to find tile of exact name '{tile_name}'")
@@ -2128,7 +2182,7 @@ def point_object_to(world_pos, obj, track_axis='Z', up_axis='Y'):
     point_object_to_internal(world_pos, obj, track_axis, up_axis, True)
     forward = obj.matrix_world.to_quaternion() @ Vector((0, 0, 1))
     diff = math.dist (direction.normalized(), forward)
-    print(f"forward of {obj.name}: {forward}, diff {diff}")
+    #print(f"forward of {obj.name}: {forward}, diff {diff}")
     #if diff > 1:
     #    flip = mathutils.Quaternion(Vector((0, 1, 0)), math.pi)
     #    obj.rotation_quaternion = obj.rotation_quaternion @ flip
