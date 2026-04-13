@@ -376,6 +376,7 @@ def handle_scene11(context):
         ("check_snake_action",                    10),
         ("check_reward_or_penalty_as_snake",      10),
         ("check_set_quality_by_poke_from_action", 10),
+        ("check_win_extend_snake_and_move_apple", 5),
         ("check_jump_to_state_guy",               40),
         # ("check_set_quality_by_poke",           10),
         ("check_pause",                           4),
@@ -471,6 +472,9 @@ def check_set_quality_by_poke_from_action(context, total_duration_num_frames, ch
         if penalty_or_reward != 0:
             prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
             add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward)
+
+def check_win_extend_snake_and_move_apple(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    sdffsdfsd
 
 def check_drop_down_spinning_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
