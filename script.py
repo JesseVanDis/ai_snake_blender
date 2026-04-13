@@ -52,7 +52,7 @@ def handle_frame(scene):
         #("scene8", ((), STARTING_GUY_POS, 0.3)),
         #("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.3, True)),
         #("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((300, 300, 300, 300, 300, 300, 300), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+        ("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
 
 #return Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + context.guy_starting_pos_offset, STARTING_GUY_POS.z))
@@ -390,7 +390,7 @@ def handle_scene11(context):
     handle_lost_guy(context)
     handle_jump_to_state_guy(context)
     handle_poke_guy(context)
-    # handle_closely_look_guy(context)
+    handle_closely_look_guy(context)
     # handle_win_guy(context)
     # handle_lost_guy(context)
     handle_spinning_wheels(context)
@@ -682,6 +682,7 @@ def reset(context):
     guy.pop("lost_frame", None)
     guy.pop("start_closely_look_frame", None)
     guy.pop("win_frame", None)
+    guy.pop("start_throw_frame", None)
     reset_guy_arms(context, guy)
 
     dice_sub_base = find_recursive(context, get_guy(context), "dice_sub_base")
@@ -1306,10 +1307,9 @@ def start_pick_up_spinning_wheel_animation(context, spinning_wheel_obj, duration
     base["start_pick_frame"] = context.frame_current
     return context.frame_current + duration_num_frames
 
-def get_dice(context, auto_create = True):
-    dice = find_recursive(context, get_guy(context), "dice", False, 4)
+def get_dice_from_guy(context, guy, auto_create = True):
+    dice = find_recursive(context, guy, "dice", False, 4)
     if dice is None and auto_create:
-        guy = get_guy(context)
         prefab_source = find_prefab(context, "dice_base")
         dice_base = duplicate_object_with_children(prefab_source, guy)
         dice_base.rotation_euler.z = math.radians(90)
@@ -1319,8 +1319,13 @@ def get_dice(context, auto_create = True):
         dice_sub_base.scale = (0, 0, 0)
     return dice
 
+
+def get_dice(context, auto_create = True):
+    return get_dice_from_guy(context, get_guy(context), auto_create)
+
 def throw_dice(context, duration_num_frames):
-    dice = get_dice(context)
+    guy = get_guy(context)
+    dice = get_dice_from_guy(context, guy)
     random.seed(context.frame_current * 1523)
     dice["rot_axis_x"] = random.uniform(-180, 180)
     dice["rot_axis_y"] = random.uniform(-180, 180)
@@ -1328,6 +1333,7 @@ def throw_dice(context, duration_num_frames):
     dice["starting_angle"] = random.uniform(0, 360)
     dice["landing_offset_angle"] = random.uniform(-20, 20)
     dice["start_throw_frame"] = context.frame_current
+    guy["start_throw_frame"] = context.frame_current # also apply on guy since reading from that is faster
     dice["end_throw_frame"] = context.frame_current + duration_num_frames
     dice["ends_at_spin"] = random.randint(1, 6) == 1
 
@@ -1882,16 +1888,17 @@ def is_dice_on_spin(context):
 
 def handle_dice(context):
     bounce_height = 1
-    dice = get_dice(context)
-    start_frame = get_property(dice, "start_throw_frame", -1)
+    guy = get_guy(context)
+    start_frame = get_property(guy, "start_throw_frame", -1)
     if start_frame >= 0:
+        dice = get_dice_from_guy(context, guy)
         end_frame            = dice["end_throw_frame"]
         ends_at_spin         = dice["ends_at_spin"]
         rot_axis             = Vector((dice["rot_axis_x"], dice["rot_axis_y"], dice["rot_axis_z"]))
         landing_offset_angle = dice["landing_offset_angle"]
         starting_angle       = dice["starting_angle"]
 
-        dice_sub_base = find_recursive(context, get_guy(context), "dice_sub_base")
+        dice_sub_base = find_recursive(context, guy, "dice_sub_base", False, 3)
         total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
 
         anim_scale     = remap_clamped(total_anim,  0, 0.1, 0, 1)
@@ -1931,6 +1938,7 @@ def handle_dice(context):
             dice_sub_base.scale = (0,0,0)
             dice.location.z = 0
             dice.pop("start_throw_frame", None)
+            guy.pop("start_throw_frame", None)
 
 # register handler once
 if handle_frame not in bpy.app.handlers.frame_change_post:
