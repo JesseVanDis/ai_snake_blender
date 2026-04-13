@@ -348,6 +348,7 @@ def handle_scene10(context):
     handle_spinning_wheels(context)
 
 def reset_scene11(context, first_time):
+    global GUY_POS_STATE_TILE_OFFSET
     for tile in find_recursive_list(context, context, "tile_state_"):
         start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
         if first_time:
@@ -377,6 +378,7 @@ def handle_scene11(context):
         ("check_pause",                 4),
         ("check_action_end",            1)
     ]
+
     handle_checks(context, checks, duration_multiplier)
     handle_dice(context)
     handle_jump_to_action_guy(context)
@@ -389,6 +391,10 @@ def handle_scene11(context):
     # handle_win_guy(context)
     # handle_lost_guy(context)
     handle_spinning_wheels(context)
+
+    #new_state = get_state_at_snake_head(context)
+    #print(f"Head state: {new_state.state_tile_obj_name()}")
+
 
 def handle_checks(context, checks, duration_multiplier):
     total_duration = sum(scale_duration(duration, duration_multiplier) for _, duration in checks) + 2
@@ -544,7 +550,7 @@ def check_jump_to_action_guy(context, total_duration_num_frames, check_frame_ind
         print(f"Spinning Wheel result: {result}")
         jump_to_action_guy(context, result, duration_num_frames)
 
-def check_jump_to_action_guy(context, total_duration_num_frames, check_frame_index, duration_num_frames):
+def check_jump_to_state_guy(context, total_duration_num_frames, check_frame_index, duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         new_state = get_state_at_snake_head(context)
         jump_to_state_guy(context, new_state, duration_num_frames)
@@ -640,6 +646,7 @@ def reset(context):
     guy.pop("start_jump_frame", None)
     guy.pop("start_poke_frame", None)
     guy.pop("start_jump_to_action_frame", None)
+    guy.pop("start_jump_to_state_frame", None)
     guy.pop("jump_direction_x", None)
     guy.pop("jump_direction_y", None)
     guy.pop("lost_frame", None)
@@ -1086,6 +1093,20 @@ def manually_set_spinning_wheel(context, spinning_wheel_obj, target_angle, durat
     disk["starting_angle"] = math.degrees(disk.rotation_euler.z)
     disk["manual_angle"] = manual_angle
 
+def is_valid_choice(context, label):
+    head = get_snake_head(context)
+    if head is None:
+        return True
+    head_pos = head.location
+    tail_pos = context.global_scene.objects["tail_1"].location
+    action_dir = Vector(action_to_dir(label))
+    tail_diff = tail_pos - head_pos
+    tail_l = math.dist(tail_pos, head_pos)
+    tail_dir = Vector((tail_diff.x / tail_l, tail_diff.y / tail_l))
+    dist = math.dist(action_dir, tail_dir)
+    #print(f"label '{label}', action_dir: {action_dir}, tail_dir: {tail_dir}, dist: {dist}")
+    return dist > 0.2
+
 def spin_spinning_wheel(context, spinning_wheel_obj, target_angle=-9999.0, duration_num_frames=40, min_turns=1):
     disk = get_disk(context, spinning_wheel_obj)
     if disk is None:
@@ -1099,6 +1120,10 @@ def spin_spinning_wheel(context, spinning_wheel_obj, target_angle=-9999.0, durat
     while actual_target_angle < starting_angle:
         actual_target_angle = actual_target_angle + 360
     actual_target_angle = actual_target_angle + min_turns * 360
+
+    sections = disk["sections"] # list of tuples: (start_angle, end_angle,label)
+    while not is_valid_choice(context, get_spinning_wheel_label_at_angle(context, sections, actual_target_angle)): # HACK: skip invalid choises
+        actual_target_angle = actual_target_angle + 10
     disk["start_spin_frame"] = context.frame_current
     disk["end_spin_frame"] = context.frame_current + duration_num_frames
     disk["starting_angle"] = math.degrees(disk.rotation_euler.z)
@@ -1172,7 +1197,10 @@ def get_spinning_wheel_result(context, tile_obj):
     if disk is None or "sections" not in disk:
         return None
     sections = disk["sections"] # list of tuples: (start_angle, end_angle, label)
-    z_deg = ((math.degrees(-disk.rotation_euler.z) + FLIPPER_DIRECTION) % 360)
+    return get_spinning_wheel_label_at_angle(context, sections, disk.rotation_euler.z)
+
+def get_spinning_wheel_label_at_angle(context, sections, angle_rad):
+    z_deg = ((math.degrees(-angle_rad) + FLIPPER_DIRECTION) % 360)
     for sec in sections:
         start = sec["start"]
         end = sec["end"]
@@ -1249,6 +1277,8 @@ def throw_dice(context, duration_num_frames):
     dice["ends_at_spin"] = random.randint(1, 6) == 1
 
 def is_penalty_tile(tile_obj):
+    if tile_obj is None:
+        return True
     return "_pen" in tile_obj.name
 
 def get_snake_head(context: SceneContext):
@@ -1289,22 +1319,23 @@ def get_state_at_snake_head(context: SceneContext):
     if apple_dist > 0:
         dir = (apple_tile_pos - snake_head_pos) / apple_dist
         dir_2d = Vector((dir.x, dir.y))
-        if dir_2d.x < -0.99:
+        if dir_2d.x < -0.8:
             apple_dir_state = 0
-        if dir_2d.x < -0.01 and dir_2d.y >  0.01:
+        if dir_2d.x < -0.2 and dir_2d.y >  0.2:
             apple_dir_state = 1
-        if dir_2d.y >  0.99:
+        if dir_2d.y >  0.8:
             apple_dir_state = 2
-        if dir_2d.x >  0.01 and dir_2d.y >  0.01:
+        if dir_2d.x >  0.2 and dir_2d.y >  0.2:
             apple_dir_state = 3
-        if dir_2d.x >  0.99:
+        if dir_2d.x >  0.8:
             apple_dir_state = 4
-        if dir_2d.x >  0.01 and dir_2d.y < -0.01:
+        if dir_2d.x >  0.2 and dir_2d.y < -0.2:
             apple_dir_state = 5
-        if dir_2d.y < -0.99:
+        if dir_2d.y < -0.8:
             apple_dir_state = 6
-        if dir_2d.x < -0.01 and dir_2d.y < -0.01:
-            apple_dir_state = 1
+        if dir_2d.x < -0.2 and dir_2d.y < -0.2:
+            apple_dir_state = 7
+        #print(f"a{apple_dir_state} | dir: [{dir_2d.x}, {dir_2d.y}] | angle: {round((math.degrees(math.atan2(dir_2d.y, dir_2d.x) / 360)) * 8)}")
     else:
         print("apple_dist should not be 0!")
 
@@ -1417,6 +1448,19 @@ def jump_to_action_guy(context, result, duration_num_frames = 11):
     guy["jump_to_action_starting_abs_pos_x"] = pos_abs.x
     guy["jump_to_action_starting_abs_pos_y"] = pos_abs.y
     guy["jump_to_action_starting_abs_pos_z"] = pos_abs.z
+
+def jump_to_state_guy(context, new_state, duration_num_frames = 40):
+    guy = get_guy(context)
+    pos_abs = get_world_location(guy)
+    guy["start_jump_to_state_frame"] = context.frame_current
+    guy["end_jump_to_state_frame"] = context.frame_current + duration_num_frames
+    guy["jump_to_state_state"] = new_state.state_tile_obj_name()
+    guy["jump_to_state_starting_pos_x"] = guy.location.x
+    guy["jump_to_state_starting_pos_y"] = guy.location.y
+    guy["jump_to_state_starting_pos_z"] = guy.location.z
+    guy["jump_to_state_starting_abs_pos_x"] = pos_abs.x
+    guy["jump_to_state_starting_abs_pos_y"] = pos_abs.y
+    guy["jump_to_state_starting_abs_pos_z"] = pos_abs.z
 
 def get_tail_number(name):
     number = int(name.split("_")[-1])
@@ -1538,6 +1582,45 @@ def handle_poke_guy(context):
         guy.pop("start_poke_frame", None)
         reset_guy_arms(context, guy)
 
+def handle_jump_guy_to(context, guy, start_frame, end_frame, from_abs_x, from_abs_y, to_abs_x, to_abs_y, jump_height = 10, facing_direction_x = 0, facing_direction_y = 0):
+    total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+
+    facing_direction = 0
+    facing_direction_start = 0
+
+    anim_turn          = remap(total_anim,  0, 0.3, 0, 1)
+    anim_jump          = remap(total_anim,  0.3, 0.7, 0, 1)
+    anim_turn_back     = remap(total_anim,  0.7, 1.0, 0, 1)
+
+    if anim_turn >= 0 and anim_turn <= 1:
+        guy.scale = (0.1, 0.1, 0.1 - anim_turn * 0.02)
+        guy.rotation_euler.z = math.radians(facing_direction_start + (anim_turn * (facing_direction-facing_direction_start)))
+    if anim_jump >= 0 and anim_jump <= 1:
+        guy.scale = (0.1, 0.1, 0.1)
+        new_pos = Vector((from_abs_x + (to_abs_x - from_abs_x) * anim_jump,
+                          from_abs_y + (to_abs_y - from_abs_y) * anim_jump,
+                          get_guy_starting_pos(context).z + math.sin(anim_jump * math.pi) * jump_height))
+        set_world_location(guy, new_pos)
+        guy.rotation_euler.z = math.radians(facing_direction_start + (facing_direction-facing_direction_start))
+    if anim_turn_back >= 0 and anim_turn_back <= 1:
+        guy.scale = (0.1, 0.1, 0.08 + anim_turn_back * 0.02)
+        new_pos = Vector((to_abs_x,
+                          to_abs_y,
+                          get_guy_starting_pos(context).z))
+        set_world_location(guy, new_pos)
+        guy.rotation_euler.z = math.radians(facing_direction_start + ((1-anim_turn_back) * (facing_direction-facing_direction_start)))
+    if anim_turn_back >= 1:
+        new_pos = Vector((to_abs_x,
+                          to_abs_y,
+                          get_guy_starting_pos(context).z))
+        set_world_location(guy, new_pos)
+        guy.rotation_euler.z = math.radians(facing_direction_start)
+        guy.scale = (0.1, 0.1, 0.1)
+        guy.pop("start_jump_to_action_frame", None)
+        return True
+    return False
+
+
 def handle_jump_guy(context):
     guy = get_guy(context)
     if guy is None or "start_jump_frame" not in guy:
@@ -1599,51 +1682,44 @@ def handle_jump_to_action_guy(context):
     wheel_result = guy["jump_to_action_result"]
     jump_starting_abs_pos_x = guy["jump_to_action_starting_abs_pos_x"]
     jump_starting_abs_pos_y = guy["jump_to_action_starting_abs_pos_y"]
-    total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
-
-    facing_direction = 0
-    facing_direction_start = 0
-    jump_height = 10
-
-    anim_turn          = remap(total_anim,  0, 0.3, 0, 1)
-    anim_jump          = remap(total_anim,  0.3, 0.7, 0, 1)
-    anim_turn_back     = remap(total_anim,  0.7, 1.0, 0, 1)
 
     result_tile_name = f"tile_move_{wheel_result}".lower()
     result_tile = context.global_scene.objects.get(result_tile_name)
     if result_tile is None:
         print(f"Failed to find tile of exact name '{result_tile_name}'")
 
-    target_y = get_world_location(result_tile).y
     target_x = get_world_location(result_tile).x
+    target_y = get_world_location(result_tile).y
 
-    #print(f"Jumping to tile '{result_tile_name}' at {target_x}, {target_y}")
-
-    if anim_turn >= 0 and anim_turn <= 1:
-        guy.scale = (0.1, 0.1, 0.1 - anim_turn * 0.02)
-        guy.rotation_euler.z = math.radians(facing_direction_start + (anim_turn * (facing_direction-facing_direction_start)))
-    if anim_jump >= 0 and anim_jump <= 1:
-        guy.scale = (0.1, 0.1, 0.1)
-        new_pos = Vector((jump_starting_abs_pos_x + (target_x - jump_starting_abs_pos_x) * anim_jump,
-                          jump_starting_abs_pos_y + (target_y - jump_starting_abs_pos_y) * anim_jump,
-                          get_guy_starting_pos(context).z + math.sin(anim_jump * math.pi) * jump_height))
-        set_world_location(guy, new_pos)
-        guy.rotation_euler.z = math.radians(facing_direction_start + (facing_direction-facing_direction_start))
-    if anim_turn_back >= 0 and anim_turn_back <= 1:
-        guy.scale = (0.1, 0.1, 0.08 + anim_turn_back * 0.02)
-        new_pos = Vector((target_x,
-                          target_y,
-                          get_guy_starting_pos(context).z))
-        set_world_location(guy, new_pos)
-        guy.rotation_euler.z = math.radians(facing_direction_start + ((1-anim_turn_back) * (facing_direction-facing_direction_start)))
-    if anim_turn_back >= 1:
-        new_pos = Vector((target_x,
-                          target_y,
-                          get_guy_starting_pos(context).z))
-        set_world_location(guy, new_pos)
-        guy.rotation_euler.z = math.radians(facing_direction_start)
-        guy.scale = (0.1, 0.1, 0.1)
+    if handle_jump_guy_to(context, guy, start_frame, end_frame, jump_starting_abs_pos_x, jump_starting_abs_pos_y, target_x, target_y, 10):
         guy.pop("start_jump_to_action_frame", None)
+
+
+def handle_jump_to_state_guy(context):
+    global GUY_POS_STATE_TILE_OFFSET
+    guy = get_guy(context)
+    if guy is None or "start_jump_to_state_frame" not in guy:
+        return None
+
+    start_frame = guy["start_jump_to_state_frame"]
+    end_frame = guy["end_jump_to_state_frame"]
+    state = SnakeState.from_state_tile_obj_name(guy["jump_to_state_state"])
+    jump_starting_abs_pos_x = guy["jump_to_state_starting_abs_pos_x"]
+    jump_starting_abs_pos_y = guy["jump_to_state_starting_abs_pos_y"]
+
+    tile_name = state.state_tile_obj_name()
+    print(f"Jumping to '{tile_name}'")
+    target_tile = context.global_scene.objects.get(tile_name)
+    if target_tile is None:
+        print(f"Failed to find tile of exact name '{tile_name}'")
+
+    target_y = get_world_location(target_tile).y + GUY_POS_STATE_TILE_OFFSET.y
+    target_x = get_world_location(target_tile).x + GUY_POS_STATE_TILE_OFFSET.x
+
+    if handle_jump_guy_to(context, guy, start_frame, end_frame, jump_starting_abs_pos_x, jump_starting_abs_pos_y, target_x, target_y, 10):
+        guy.pop("start_jump_to_state_frame", None)
+
+
 
 def handle_snake_action_tail(context, tail):
     number = get_tail_number(tail.name)
@@ -1662,18 +1738,7 @@ def handle_snake_action_tail(context, tail):
     if next_tail:
         handle_snake_action_tail(context, next_tail)
 
-def handle_snake_action(context):
-    snake_head = get_snake_head(context)
-    if snake_head is None or "action_frame_start" not in snake_head:
-        return None
-
-    start_frame = snake_head["action_frame_start"]
-    end_frame = snake_head["action_frame_end"]
-    starting_pos_x = snake_head["action_starting_pos_x"]
-    starting_pos_y = snake_head["action_starting_pos_y"]
-    action = snake_head["action_action"]
-
-    total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+def action_to_dir(action):
     dir_x = 0
     dir_y = 0
     if action.lower() == "w":
@@ -1688,6 +1753,21 @@ def handle_snake_action(context):
     if action.lower() == "s":
         dir_x = -1
         dir_y = 0
+    return (dir_x, dir_y)
+
+def handle_snake_action(context):
+    snake_head = get_snake_head(context)
+    if snake_head is None or "action_frame_start" not in snake_head:
+        return None
+
+    start_frame = snake_head["action_frame_start"]
+    end_frame = snake_head["action_frame_end"]
+    starting_pos_x = snake_head["action_starting_pos_x"]
+    starting_pos_y = snake_head["action_starting_pos_y"]
+    action = snake_head["action_action"]
+
+    total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+    dir_x, dir_y = action_to_dir(action)
 
     ending_pos_x = (starting_pos_x + dir_x)
     ending_pos_y = (starting_pos_y + dir_y)
@@ -1695,7 +1775,7 @@ def handle_snake_action(context):
     new_pos_x = starting_pos_x + (ending_pos_x - starting_pos_x) * total_anim
     new_pos_y = starting_pos_y + (ending_pos_y - starting_pos_y) * total_anim
 
-    print(f"posx: {new_pos_x}, posy: {new_pos_y} | {total_anim} | {starting_pos_x}, {starting_pos_y}")
+    #print(f"posx: {new_pos_x}, posy: {new_pos_y} | {total_anim} | {starting_pos_x}, {starting_pos_y}")
     snake_head.location.x = new_pos_x
     snake_head.location.y = new_pos_y
 
