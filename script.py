@@ -664,7 +664,7 @@ def reset(context):
 
     snake_head = get_snake_head(context)
     if snake_head is not None:
-        guy.pop("action_frame_start", None)
+        snake_head.pop("action_frame_start", None)
 
     for spinning_wheel_obj in get_spinning_wheels(context):
         reset_spinning_wheel(context, spinning_wheel_obj)
@@ -688,10 +688,12 @@ def reset_snake(global_scene):
     tail_1 = global_scene.objects["tail_1"]
     tail_1.location = snake_head.location
     tail_1.location.x = tail_1.location.x + 1
+    tail_1.location.y = snake_head.location.y
     tail_1.rotation_euler.z = 0
     tail_2 = global_scene.objects["tail_2"]
     tail_2.location = tail_1.location
     tail_2.location.x = tail_2.location.x + 1
+    tail_2.location.y = snake_head.location.y
     tail_2.rotation_euler.z = 0
     delete_tail(global_scene, global_scene.objects.get("tail_3"))
 
@@ -1319,21 +1321,22 @@ def get_state_at_snake_head(context: SceneContext):
     if apple_dist > 0:
         dir = (apple_tile_pos - snake_head_pos) / apple_dist
         dir_2d = Vector((dir.x, dir.y))
-        if dir_2d.x < -0.8:
+
+        if dir_2d.x < -0.65:
             apple_dir_state = 0
-        if dir_2d.x < -0.2 and dir_2d.y >  0.2:
+        if dir_2d.x < -0.35 and dir_2d.y >  0.35:
             apple_dir_state = 1
-        if dir_2d.y >  0.8:
+        if dir_2d.y >  0.65:
             apple_dir_state = 2
-        if dir_2d.x >  0.2 and dir_2d.y >  0.2:
+        if dir_2d.x >  0.35 and dir_2d.y >  0.35:
             apple_dir_state = 3
-        if dir_2d.x >  0.8:
+        if dir_2d.x >  0.65:
             apple_dir_state = 4
-        if dir_2d.x >  0.2 and dir_2d.y < -0.2:
+        if dir_2d.x >  0.35 and dir_2d.y < -0.35:
             apple_dir_state = 5
-        if dir_2d.y < -0.8:
+        if dir_2d.y < -0.65:
             apple_dir_state = 6
-        if dir_2d.x < -0.2 and dir_2d.y < -0.2:
+        if dir_2d.x < -0.35 and dir_2d.y < -0.35:
             apple_dir_state = 7
         #print(f"a{apple_dir_state} | dir: [{dir_2d.x}, {dir_2d.y}] | angle: {round((math.degrees(math.atan2(dir_2d.y, dir_2d.x) / 360)) * 8)}")
     else:
