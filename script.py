@@ -52,7 +52,7 @@ def handle_frame(scene):
         #("scene8", ((), STARTING_GUY_POS, 0.3)),
         #("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.3, True)),
         #("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+        ("scene11", ((300, 300, 300, 300, 300, 300, 300), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
 
 #return Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + context.guy_starting_pos_offset, STARTING_GUY_POS.z))
@@ -358,10 +358,11 @@ def reset_scene11(context, first_time):
         #reset_snake(context.global_scene)
         guy = get_guy(context)
         snake_state = get_state_at_snake_head(context)
-        print(f"Snake state walls: {snake_state.walls}, apple dir: {snake_state.apple_dir}")
+        #print(f"Snake state walls: {snake_state.walls}, apple dir: {snake_state.apple_dir}")
         tile = find_state_tile(context, snake_state)
         tile_pos = get_world_location(tile)
         set_world_location(guy, tile_pos + GUY_POS_STATE_TILE_OFFSET)
+    reset_snake(context.global_scene)
 
 def handle_scene11(context):
     duration_multiplier = 1.0
@@ -369,23 +370,23 @@ def handle_scene11(context):
     checks = [
         # check function name,          duration
         #("check_pause",                 40),
-        ("check_dice",                  25),
-        ("check_compare_or_spin_wheel", 20),
-        ("check_jump_to_action_guy",    40),
-        ("check_snake_action",          10),
-        # ("check_reward_or_penalty",     5),
-        ("check_jump_to_state_guy",     40),
-        # ("check_set_quality_by_poke",   10),
-        ("check_pause",                 4),
-        ("check_action_end",            1)
+        ("check_dice",                       25),
+        ("check_compare_or_spin_wheel",      20),
+        ("check_jump_to_action_guy",         30),
+        ("check_snake_action",               10),
+        ("check_reward_or_penalty_as_snake", 10),
+        ("check_jump_to_state_guy",          40),
+        # ("check_set_quality_by_poke",      10),
+        ("check_pause",                      4),
+        ("check_action_end",                 1)
     ]
 
     handle_checks(context, checks, duration_multiplier)
     handle_dice(context)
     handle_jump_to_action_guy(context)
     handle_snake_action(context)
-    # handle_win_guy(context)
-    # handle_lost_guy(context)
+    handle_win_guy(context)
+    handle_lost_guy(context)
     handle_jump_to_state_guy(context)
     # handle_poke_guy(context)
     # handle_closely_look_guy(context)
@@ -594,9 +595,15 @@ def get_tile_penalty_or_reward(context, tile):
     reward = get_tile_reward(context, tile)
     return reward - penalty
 
-def check_reward_or_penalty(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+def check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_index, check_duration_num_frames, as_snake):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
-        tile = get_tile_at_guy(context)
+        tile = None
+        if as_snake:
+            snake_head = get_snake_head(context)
+            play_board = find_recursive(context, context, "play_board")
+            tile = get_tile_at_pos(context, get_world_location(snake_head), 2, play_board)
+        else:
+            tile = get_tile_at_guy(context)
         #print(f"Checking tile {tile.name}")
         penalty = get_tile_penalty(context, tile)
         reward = get_tile_reward(context, tile)
@@ -608,6 +615,12 @@ def check_reward_or_penalty(context, total_duration_num_frames, check_frame_inde
             lose_guy(context, check_duration_num_frames)
         if name_contains_key(tile.name, "win"):
             win_guy(context, check_duration_num_frames)
+
+def check_reward_or_penalty(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_index, check_duration_num_frames, False)
+
+def check_reward_or_penalty_as_snake(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_index, check_duration_num_frames, True)
 
 def get_num_actions_done(context):
     return int(context.frame_current / context.action_duration_num_frames)
