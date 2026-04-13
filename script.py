@@ -471,9 +471,8 @@ def check_set_quality_by_poke_from_action(context, total_duration_num_frames, ch
         tile_previous = get_guy_prev_action_tile(context)
         penalty_or_reward = get_tile_penalty_or_reward(context, tile_current)
         if penalty_or_reward != 0:
-            print(f"Apply! to tile {tile_previous.name}")
             prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
-            add_quality_at_disk_section(context, get_guy_prev_tile(context), prev_tile_result, penalty_or_reward)
+            add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward)
 
 def check_drop_down_spinning_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -1477,7 +1476,7 @@ def get_guy_prev_tile(context):
 def get_guy_prev_action_tile(context):
     guy = get_guy(context)
     prev_guy_pos = Vector((get_property(guy, "jump_starting_abs_pos_x", guy.location.x), get_property(guy, "jump_starting_abs_pos_y", guy.location.y), get_property(guy, "jump_starting_abs_pos_z", guy.location.z)))
-    play_board = find_recursive(context, context, "play_board")
+    play_board = find_recursive(context, context, "thinking_board")
     tile = get_tile_at_pos(context, prev_guy_pos, 2, play_board)
     return tile
 
@@ -1646,7 +1645,7 @@ def handle_poke_guy(context):
         distance = diff_arm_left.length
     #print(f"distance: {distance}, scale {get_world_scale(arm_to_use).z}")
     point_object_to(poke_target, arm_to_use)
-    arm_stretch_dist = distance
+    arm_stretch_dist = distance # fix is probably,  max(distance, 1.0).. but at the same time its kinda funny
     #if abs(guy.rotation_euler.x) > EPS: # if guy is laying down
     #    arm_stretch_dist = 8
     arm_to_use.scale.z = math.sin(anim*math.pi) * arm_stretch_dist * 3.6
