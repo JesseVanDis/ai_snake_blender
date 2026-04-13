@@ -379,7 +379,7 @@ def handle_scene11(context):
         ("check_jump_to_state_guy",               40),
         # ("check_set_quality_by_poke",           10),
         ("check_pause",                           4),
-        ("check_action_end",                      1)
+        ("check_action_end_snake",                1)
     ]
 
     handle_checks(context, checks, duration_multiplier)
@@ -391,8 +391,6 @@ def handle_scene11(context):
     handle_jump_to_state_guy(context)
     handle_poke_guy(context)
     handle_closely_look_guy(context)
-    # handle_win_guy(context)
-    # handle_lost_guy(context)
     handle_spinning_wheels(context)
 
     #new_state = get_state_at_snake_head(context)
@@ -643,6 +641,12 @@ def check_action_end(context, total_duration_num_frames, check_frame_index, chec
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         print(f"action {get_num_actions_done(context)} done")
         if guy_won(context) or guy_lost(context):
+            reset(context)
+
+def check_action_end_snake(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
+    if (context.frame_current % total_duration_num_frames) == check_frame_index:
+        print(f"action {get_num_actions_done(context)} done")
+        if guy_lost(context):
             reset(context)
 
 def guy_got_reward_or_penalty(context):
@@ -1142,7 +1146,7 @@ def is_valid_choice(context, label):
     tail_l = math.dist(tail_pos, head_pos)
     tail_dir = Vector((tail_diff.x / tail_l, tail_diff.y / tail_l))
     dist = math.dist(action_dir, tail_dir)
-    print(f"checking if label '{label}' is valid: label_dir: {action_dir}, tail_dir: {tail_dir}, dist: {dist}. valid: {dist > 0.2}")
+    #print(f"checking if label '{label}' is valid: label_dir: {action_dir}, tail_dir: {tail_dir}, dist: {dist}. valid: {dist > 0.2}")
     return dist > 0.2
 
 def spin_spinning_wheel(context, spinning_wheel_base_obj, target_angle=-9999.0, duration_num_frames=40, min_turns=1):
@@ -1598,14 +1602,35 @@ def handle_win_guy(context):
         anim = max(0, min((context.frame_current - win_frame) / (win_frame_end - win_frame), 1), 0)
         apple_pos_x = 0.3
         frames_since_win = context.frame_current - win_frame
-        tile = get_tile_at_guy(context)
+        tile = None
+        snake_head = get_snake_head(context)
+        if snake_head is not None:
+            wheel_result = guy["jump_to_action_result"]
+            result_tile_name = f"tile_move_{wheel_result}".lower()
+            result_tile = context.global_scene.objects.get(result_tile_name)
+            if result_tile is None:
+                print(f"Failed to find tile of exact name '{result_tile_name}'")
+            tile = result_tile
+        else:
+            tile = get_tile_at_guy(context)
+        #print(f"Obtaining aple for '{tile.name}'")
         apple = find_recursive(context, tile, "apple")
+        is_hidden_apple = False
+        if apple is None:
+            apple = find_recursive(context, tile, "hidden_apple")
+            is_hidden_apple = True
         guy_pos = get_world_location(guy)
         guy_forward = get_world_forward(guy)
         old_apple_pos = get_world_location(apple.parent)
         target_apple_pos = guy_pos + guy_forward * apple_pos_x + Vector((0, 0, 0.5))
         new_apple_pos = old_apple_pos + (target_apple_pos - old_apple_pos) * anim
-        set_world_location(apple, new_apple_pos)                
+        set_world_location(apple, new_apple_pos)
+        if is_hidden_apple:
+            if anim >= 0.99:
+                apple.scale = Vector((0.1, 0.1, 0.1))
+            else:
+                scale_anim = remap_clamped(anim, 0, 0.1, 0, 1)
+                apple.scale = Vector((scale_anim, scale_anim, scale_anim))
 
 def handle_lost_guy(context):
     guy = get_guy(context)
@@ -2024,10 +2049,10 @@ def get_world_scale(obj):
     return obj.matrix_world.to_scale()
 
 def get_world_forward(obj):
-    return obj.matrix_world.to_quaternion() @ Vector((0, 1, 0))
+    return obj.matrix_world.to_quaternion() @ Vector((-1, 0, 0))
 
-def get_world_left(obj):
-    return obj.matrix_world.to_quaternion() @ Vector((1, 0, 0))
+#def get_world_left(obj):
+#    return obj.matrix_world.to_quaternion() @ Vector((1, 0, 0))
 
 def get_world_up(obj):
     return obj.matrix_world.to_quaternion() @ Vector((0, 0, 1))
