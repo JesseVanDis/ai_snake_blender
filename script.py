@@ -13,6 +13,7 @@ bpy.app.handlers.frame_change_post.clear()
 
 STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
 GUY_POS_STATE_TILE_OFFSET = Vector((-0.2696, 0, 0.32991))
+ACTION_TILE_POS_Z = 0.747776
 
 EPS = 1e-6
 FLIPPER_DIRECTION = 90
@@ -534,7 +535,7 @@ def check_spin_wheel(context, total_duration_num_frames, check_frame_index, chec
 def check_jump_guy(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         result = get_spinning_wheel_result(context, get_spinning_wheel_at_guy(context))
-        print(f"Spinning Wheel result: {result}")
+        #print(f"Spinning Wheel result: {result}")
         if result == "W":
             jump_guy(context, 0, -1, check_duration_num_frames)
         if result == "E":
@@ -1106,7 +1107,7 @@ def is_valid_choice(context, label):
     tail_l = math.dist(tail_pos, head_pos)
     tail_dir = Vector((tail_diff.x / tail_l, tail_diff.y / tail_l))
     dist = math.dist(action_dir, tail_dir)
-    #print(f"label '{label}', action_dir: {action_dir}, tail_dir: {tail_dir}, dist: {dist}")
+    print(f"checking if label '{label}' is valid: label_dir: {action_dir}, tail_dir: {tail_dir}, dist: {dist}. valid: {dist > 0.2}")
     return dist > 0.2
 
 def spin_spinning_wheel(context, spinning_wheel_obj, target_angle=-9999.0, duration_num_frames=40, min_turns=1):
@@ -1124,8 +1125,10 @@ def spin_spinning_wheel(context, spinning_wheel_obj, target_angle=-9999.0, durat
     actual_target_angle = actual_target_angle + min_turns * 360
 
     sections = disk["sections"] # list of tuples: (start_angle, end_angle,label)
-    while not is_valid_choice(context, get_spinning_wheel_label_at_angle(context, sections, actual_target_angle)): # HACK: skip invalid choises
+    while not is_valid_choice(context, get_spinning_wheel_label_at_angle(context, sections, math.radians(actual_target_angle))): # HACK: skip invalid choises
         actual_target_angle = actual_target_angle + 10
+        print(f"Invalid choice, adding 10 degrees. now target angle: {actual_target_angle}")
+    print(f"target angle: {actual_target_angle}")
     disk["start_spin_frame"] = context.frame_current
     disk["end_spin_frame"] = context.frame_current + duration_num_frames
     disk["starting_angle"] = math.degrees(disk.rotation_euler.z)
@@ -1183,6 +1186,7 @@ def handle_spinning_wheel(context, spinning_wheel_obj):
     perc = max(0, min((context.frame_current - start_spin_frame) / (end_spin_frame - start_spin_frame), 1), 0)
     perc_anim = math.sin((perc)*(math.pi/2))
     disk.rotation_euler.z = math.radians(starting_angle + (target_angle - starting_angle) * perc_anim)
+    #print(f"setting disk to target angle: {target_angle}. current angle: {math.degrees(disk.rotation_euler.z)}. label: {get_spinning_wheel_result(context, disk)}")
     handle_spinning_wheel_flipper(context, spinning_wheel_obj)
     if perc_anim >= 1:
         disk.pop("start_spin_frame", None)
@@ -1490,6 +1494,7 @@ def do_snake_action(context, action, duration_num_frames = 20):
     snake_head["action_starting_pos_x"] = round(snake_head.location.x)
     snake_head["action_starting_pos_y"] = round(snake_head.location.y)
     snake_head["action_starting_pos_z"] = round(snake_head.location.z)
+    snake_head["action_starting_rot_z"] = snake_head.rotation_euler.z
     snake_head["action_action"] = action
     do_snake_tail_action(context, snake_head, context.global_scene.objects["tail_1"], action, duration_num_frames)
 
@@ -1598,6 +1603,7 @@ def handle_jump_guy_to(context, guy, start_frame, end_frame, from_abs_x, from_ab
     if anim_turn >= 0 and anim_turn <= 1:
         guy.scale = (0.1, 0.1, 0.1 - anim_turn * 0.02)
         guy.rotation_euler.z = math.radians(facing_direction_start + (anim_turn * (facing_direction-facing_direction_start)))
+        set_world_location(guy, Vector((from_abs_x, from_abs_y, get_guy_starting_pos(context).z)))
     if anim_jump >= 0 and anim_jump <= 1:
         guy.scale = (0.1, 0.1, 0.1)
         new_pos = Vector((from_abs_x + (to_abs_x - from_abs_x) * anim_jump,
@@ -1695,7 +1701,14 @@ def handle_jump_to_action_guy(context):
     target_y = get_world_location(result_tile).y
 
     if handle_jump_guy_to(context, guy, start_frame, end_frame, jump_starting_abs_pos_x, jump_starting_abs_pos_y, target_x, target_y, 10):
+        result_tile.location.z = ACTION_TILE_POS_Z
         guy.pop("start_jump_to_action_frame", None)
+    else:
+        total_anim   = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+        landing_anim = remap_clamped(total_anim,  0.7, 1.0, 0, 1)
+        boink = -math.sin(landing_anim * math.pi) * 0.5
+        result_tile.location.z = ACTION_TILE_POS_Z + boink
+        guy.location.z = guy.location.z + boink
 
 
 def handle_jump_to_state_guy(context):
@@ -1767,9 +1780,11 @@ def handle_snake_action(context):
     end_frame = snake_head["action_frame_end"]
     starting_pos_x = snake_head["action_starting_pos_x"]
     starting_pos_y = snake_head["action_starting_pos_y"]
+    starting_rot_z = snake_head["action_starting_rot_z"]
     action = snake_head["action_action"]
 
     total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+    rotate_anim = remap_clamped(total_anim, 0, 0.2, 0, 1)
     dir_x, dir_y = action_to_dir(action)
 
     ending_pos_x = (starting_pos_x + dir_x)
@@ -1781,6 +1796,14 @@ def handle_snake_action(context):
     #print(f"posx: {new_pos_x}, posy: {new_pos_y} | {total_anim} | {starting_pos_x}, {starting_pos_y}")
     snake_head.location.x = new_pos_x
     snake_head.location.y = new_pos_y
+
+    target_rot_z = math.atan2(dir_y, dir_x) + math.pi
+    delta = target_rot_z - starting_rot_z
+    delta = (delta + math.pi) % (2 * math.pi) - math.pi
+    snake_head.rotation_euler.z = starting_rot_z + delta * rotate_anim
+
+    #target_rot_z = math.atan2(dir_y, dir_x) + math.pi
+    #snake_head.rotation_euler.z = starting_rot_z + (target_rot_z - starting_rot_z) * rotate_anim
 
     handle_snake_action_tail(context, context.global_scene.objects["tail_1"])
 
