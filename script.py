@@ -40,9 +40,8 @@ def handle_frame(scene):
     timer_start = time.perf_counter()
 
 
-
     configs = [
-        #("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), STARTING_GUY_POS)),
+        ("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), STARTING_GUY_POS)),
         #("scene2", ()),
         #("scene3", ((180, 180, 180, 180, 180), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y - 2, STARTING_GUY_POS.z)))),
         #("scene4", ((0, 0, 0, 0, 0), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + 2, STARTING_GUY_POS.z)), 0.4)),
@@ -52,7 +51,7 @@ def handle_frame(scene):
         #("scene8", ((), STARTING_GUY_POS, 0.3)),
         #("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.3, True)),
         #("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+        #("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
 
 #return Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + context.guy_starting_pos_offset, STARTING_GUY_POS.z))
@@ -95,13 +94,14 @@ def reset_scene1(context, first_time):
 def handle_scene1(context):
     duration_multiplier = 1.0
     checks = [
-        # check function name,              duration
-        ("check_drop_down_spinning_wheel",  5),
-        ("check_spin_wheel",                40),
-        ("check_pick_up_spinning_wheel",    5),
-        ("check_jump_guy",                  11),
-        ("check_reward_or_penalty",         5),
-        ("check_action_end",                1)
+        # check function name,                       duration
+        ("check_drop_down_spinning_wheel",           5),
+        ("check_spin_wheel",                         40),
+        ("check_pick_up_spinning_wheel",             5),
+        ("check_jump_guy",                           11),
+        ("check_reward_or_penalty",                  5),
+        ("check_pause",                              10),
+        ("check_action_end",                         1)
     ]
 
     handle_checks(context, checks, duration_multiplier)
@@ -474,7 +474,7 @@ def check_set_quality_by_poke_from_action(context, total_duration_num_frames, ch
             add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward)
 
 def check_win_extend_snake_and_move_apple(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
-    sdffsdfsd
+    print("TODO check_win_extend_snake_and_move_apple")
 
 def check_drop_down_spinning_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -867,24 +867,24 @@ def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
         return 0 # fallback if not found
 
     
-    def apply_colors(disk, sections):
-        mesh = disk.data
-        bm = bmesh.new()
-        bm.from_mesh(mesh)
-        for face in bm.faces:      
-            # Only operate on top faces (normal pointing up)  
-            if not is_disk_face_part_of_section(disk, face):
-                continue
-
-            for sec in sections:
-                if is_disk_face_part_of_section(disk, face, sec.label):
-                    sec_index = material_index_from_label_object(disk, sec.label)
-                    if sec_index < len(mesh.materials):
-                        face.material_index = sec_index
-
-        bm.to_mesh(mesh)
-        bm.free()
-        mesh.update()
+    # def apply_colors(disk, sections):
+    #     mesh = disk.data
+    #     bm = bmesh.new()
+    #     bm.from_mesh(mesh)
+    #     for face in bm.faces:
+    #         # Only operate on top faces (normal pointing up)
+    #         if not is_disk_face_part_of_section(disk, face):
+    #             continue
+    #
+    #         for sec in sections:
+    #             if is_disk_face_part_of_section(disk, face, sec.label):
+    #                 sec_index = material_index_from_label_object(disk, sec.label)
+    #                 if sec_index < len(mesh.materials):
+    #                     face.material_index = sec_index
+    #
+    #     bm.to_mesh(mesh)
+    #     bm.free()
+    #     mesh.update()
         
     def add_section_bars(disk, sections):
         template = next((c for c in disk.children if c.name.startswith("bar")), None)
@@ -945,7 +945,7 @@ def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
         for sec in sections
     ]
     reset_spinning_wheel(context, spinning_wheel_obj)
-    apply_colors(disk, sections)
+    # apply_colors(disk, sections)
     add_section_bars(disk, sections)
     add_section_labels(disk, sections)
 
