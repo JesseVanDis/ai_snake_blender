@@ -34,6 +34,7 @@ class SceneContext:
         self.quality_bleeds_over = quality_bleeds_over
         self.gamma = 0.8  # max bleedover value perc compared to neighbour
         self.chance_table = chance_table
+        self.first_snake_apple_location = [Vector((3, -2.7))]
 
 
 def handle_frame(scene):
@@ -474,7 +475,13 @@ def check_set_quality_by_poke_from_action(context, total_duration_num_frames, ch
             add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward)
 
 def check_win_extend_snake_and_move_apple(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
-    sdffsdfsd
+    if (context.frame_current % total_duration_num_frames) == check_frame_index:
+        tile = get_tile_at_snake_head(context)
+        apple = find_recursive(context, tile, "apple")
+        if apple is not None:
+            extend_snake(context)
+            randomize_snake_apple_position(context)
+
 
 def check_drop_down_spinning_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -1349,6 +1356,82 @@ def is_penalty_tile(tile_obj):
     if tile_obj is None:
         return True
     return "_pen" in tile_obj.name
+
+def extend_snake(context: SceneContext):
+    tail = context.global_scene.objects["tail_1"]
+    last_tail = tail
+    while tail is not None:
+        current_num = get_tail_number(tail.name)
+        tail = context.global_scene.objects[f"tail_{(current_num+1)}"]
+        if tail is not None:
+            last_tail = tail
+    last_tail_num = get_tail_number(last_tail.name)
+    new_tail = duplicate_object_with_children(last_tail, last_tail.parent)
+    new_tail.name = f"tail_{last_tail_num}"
+    new_tail.location = last_tail.location
+    new_tail.location.x = tail["tail_action_starting_pos_x"]
+    new_tail.location.y = tail["tail_action_starting_pos_y"]
+
+def is_tile_blocked_by_snake(context, tile_obj):
+    snake_head = get_snake_head(context)
+    if not snake_head:
+        return None
+    play_board = find_recursive(context, context, "play_board")
+
+    next_tail_number = 0
+    tail = snake_head
+    while tail is not None:
+        tile = get_tile_at_pos(context, tail.matrix_world.translation, 2, play_board)
+        if tile == tile_obj:
+            return True
+        next_tail_number = next_tail_number + 1
+        tail = context.global_scene.objects.get(f"tail_{next_tail_number}")
+    return False
+
+def swap_tiles(context, tile_obj_a, tile_obj_b):
+    pos_x = tile_obj_a.location.x
+    pos_y = tile_obj_a.location.y
+    tile_obj_a.location.x = tile_obj_b.location.x
+    tile_obj_a.location.y = tile_obj_b.location.y
+    tile_obj_b.location.x = pos_x
+    tile_obj_b.location.y = pos_y
+
+def randomize_snake_apple_position(context: SceneContext):
+    play_board = find_recursive(context, context, "play_board")
+    apple_tile = find_recursive(context, play_board, "apple", False, 3).parent
+    tile_candidates = find_recursive_list(context, play_board, "tile_neutral", 3)
+
+    num_actions_done = get_num_actions_done(context)
+    next_location = None
+    if isinstance(context.first_snake_apple_location, Vector):
+        if num_actions_done == 0:
+            next_location = context.first_snake_apple_location
+    else:
+        if num_actions_done < len(context.first_snake_apple_location):
+            next_location = context.first_snake_apple_location[num_actions_done]
+
+    if next_location is not None:
+        print(f"Setting apple to manually set position: {next_location}")
+        tile_candidates.append(apple_tile)
+        nearest = min(
+            tile_candidates,
+            key=lambda obj: (obj.location.xy - next_location).length
+        )
+        tile_candidates = sorted(tile_candidates, key=lambda obj: obj.name)
+        swap_tiles(context, nearest, apple_tile)
+    else:
+        random.shuffle(tile_candidates)
+        ok = False
+        for tile in tile_candidates:
+            if not is_tile_blocked_by_snake(context, tile):
+                swap_tiles(context, tile, apple_tile)
+                ok = True
+                break
+
+        if not ok:
+            print("Error in 'randomize_snake_apple_position'. No available tiles left to place the apple")
+
+    pass
 
 def get_snake_head(context: SceneContext):
     return find_recursive(context, context, "snake")
