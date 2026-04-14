@@ -2012,17 +2012,18 @@ def make_object_and_children_visible_to_renderer(obj):
         make_object_and_children_visible_to_renderer(child)
     
 def delete_object_recursive(obj):
-    if obj is None:
-        return
-    # First delete all children recursively
-    children = list(obj.children)
-    for child in children:
-        delete_object_recursive(child)
-
-    # Then unlink and remove this object
-    for col in obj.users_collection:
-        col.objects.unlink(obj)
-    bpy.data.objects.remove(obj)        
+    pass
+    # if obj is None:
+    #     return
+    # # First delete all children recursively
+    # children = list(obj.children)
+    # for child in children:
+    #     delete_object_recursive(child)
+    #
+    # # Then unlink and remove this object
+    # for col in obj.users_collection:
+    #     col.objects.unlink(obj)
+    # bpy.data.objects.remove(obj)
 
 def name_contains_key(name, key):
     if ("_" + key + "_") in name:
