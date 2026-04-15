@@ -70,6 +70,7 @@ def handle_frame(scene):
 
         delete_generated_meshes()
         reset_snake(scene)
+        delete_trashed_objects(scene)
 
     if scene.frame_current == 1 or scene.frame_current == 2:
         for name, ctx in ctxs:
@@ -412,7 +413,7 @@ def handle_checks(context, checks, duration_multiplier):
 def scale_duration(duration_num_frames, duration_multiplier):
     return max(1, int(duration_num_frames * duration_multiplier))
 
-def init(context):
+def init(context: SceneContext):
     context.scene_obj.pop("reset_called", None)
     guy = get_guy(context)
     if context.frame_current <= 1:
@@ -422,9 +423,9 @@ def init(context):
             if not path.startswith("_ignore") and not path.startswith("_prefabs"):
                 # print(f"deleting '{get_object_path(obj)}'")
                 try:
-                    delete_object_recursive(obj)
+                    move_objects_to_trash_recursive(context.global_scene, obj)
                 except Exception as e:
-                    print(f"Delete failed: {e}")
+                    print(f"move to trash failed: {e}")
 
         context.scene_obj["spinning_wheels"] = list([])
         print("Cleared list")
@@ -715,7 +716,7 @@ def delete_tail(global_scene, starting_tail_obj):
     if starting_tail_obj is None:
         return
     number = get_tail_number(starting_tail_obj.name)
-    delete_object_recursive(starting_tail_obj)
+    move_objects_to_trash_recursive(global_scene, starting_tail_obj)
     delete_tail(global_scene.objects.get(f"tail_{(number + 1)}"))
 
 def reset_snake(global_scene):
@@ -2010,20 +2011,30 @@ def make_object_and_children_visible_to_renderer(obj):
     obj.hide_render = False
     for child in obj.children:
         make_object_and_children_visible_to_renderer(child)
-    
-def delete_object_recursive(obj):
+
+def move_objects_to_trash_recursive(global_scene, obj):
+    trash_obj = global_scene.objects["trash"]
+
+    # # First move all children recursively
+    children = list(obj.children)
+    for child in children:
+        move_objects_to_trash_recursive(global_scene, child)
+    obj.parent = trash_obj
+    obj.name = "remove_me"
     pass
-    # if obj is None:
-    #     return
-    # # First delete all children recursively
-    # children = list(obj.children)
-    # for child in children:
-    #     delete_object_recursive(child)
-    #
-    # # Then unlink and remove this object
-    # for col in obj.users_collection:
-    #     col.objects.unlink(obj)
-    # bpy.data.objects.remove(obj)
+
+def delete_trashed_objects(global_scene):
+    trash_obj = global_scene.objects["trash"]
+    names_to_remove = []
+    for child in trash_obj.children:
+        if child.name.startswith("remove_me"):
+            names_to_remove.append(child.name)
+
+    for object_name_to_remove in names_to_remove:
+        obj = global_scene.objects[object_name_to_remove]
+        for col in obj.users_collection:
+            col.objects.unlink(obj)
+        bpy.data.objects.remove(obj)
 
 def name_contains_key(name, key):
     if ("_" + key + "_") in name:
