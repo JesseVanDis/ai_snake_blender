@@ -4,6 +4,7 @@ import bmesh
 import mathutils
 import random
 import re
+import os
 import time
 from mathutils import Vector
 
@@ -35,10 +36,26 @@ class SceneContext:
         self.gamma = 0.8  # max bleedover value perc compared to neighbour
         self.chance_table = chance_table
 
+def render_and_save_current_frame(folder):
+    scene = bpy.context.scene
+    frame = scene.frame_current
+    folder = bpy.path.abspath(folder)
+    os.makedirs(folder, exist_ok=True)
+    filepath = os.path.join(folder, f"frame_{frame:06d}.png")
+    scene.render.filepath = filepath
+    bpy.ops.render.render(write_still=True)
+
+_last_frame = None
 
 def handle_frame(scene):
-    timer_start = time.perf_counter()
+    global _last_frame
+    frame = scene.frame_current
+    if frame == _last_frame:
+        return
+    _last_frame = frame
+    print("Running logic for frame:", frame)
 
+    timer_start = time.perf_counter()
 
     configs = [
         ("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), STARTING_GUY_POS)),
@@ -87,7 +104,9 @@ def handle_frame(scene):
     timer_end = time.perf_counter()
     duration_us = (timer_end - timer_start) * 1_000_000
     #print(f"frame {scene.frame_current} took {duration_us:.1f} µs")
-
+    if scene.frame_current > 2:
+        print(f"Rendering frame '{scene.frame_current}'...")
+        render_and_save_current_frame("//output/")
 
 def reset_scene1(context, first_time):
     pass
@@ -2189,12 +2208,9 @@ def delete_generated_meshes():
 
 def get_object_path(obj):
     parts = []
-    while obj:
-        try:
-            parts.append(obj.name)
-            obj = obj.parent
-        except ReferenceError:
-            break
+    while obj is not None:
+        parts.append(obj.name)
+        obj = obj.parent
     return "/".join(reversed(parts))
 
 def point_object_to_internal(world_pos, obj, track_axis='Z', up_axis='Y', invert = False):
