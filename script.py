@@ -16,7 +16,13 @@ def getenv_int(name, default=0):
     except ValueError:
         return default
 
-debug_scene="scene7"
+def getenv_float(name, default=0.0):
+    try:
+        return float(os.getenv(name, default))
+    except ValueError:
+        return default
+
+debug_scene="scene8"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
@@ -24,9 +30,13 @@ OUTPUT_FOLDER = os.getenv("OUTPUT_FOLDER", "//output/")
 FRAME_START = getenv_int("FRAME_START", -1)
 FRAME_END = getenv_int("FRAME_END", -1)
 ACTIVE_SCENE = os.getenv("ACTIVE_SCENE", "")
+RENDER_INTERVAL = getenv_int("RENDER_INTERVAL", 0)
+SPEED_MULTIPLIER = getenv_float("SPEED_MULTIPLIER", 1.0)
 STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
 GUY_POS_STATE_TILE_OFFSET = Vector((-0.2696, 0, 0.32991))
 ACTION_TILE_POS_Z = 0.747776
+
+_frames_until_render = 0
 
 EPS = 1e-6
 FLIPPER_DIRECTION = 90
@@ -64,6 +74,7 @@ _last_frame = None
 def handle_frame(scene):
     global _last_frame
     global _should_render
+    global _frames_until_render
     frame = scene.frame_current
     if frame == _last_frame:
         return
@@ -132,14 +143,17 @@ def handle_frame(scene):
     duration_us = (timer_end - timer_start) * 1_000_000
     #print(f"frame {scene.frame_current} took {duration_us:.1f} µs")
     if _should_render and scene.frame_current > 2:
-        print(f"Rendering frame '{scene.frame_current}'...")
-        render_and_save_current_frame(OUTPUT_FOLDER)
+        if _frames_until_render <= 0:
+            print(f"Rendering frame '{scene.frame_current}'...")
+            render_and_save_current_frame(OUTPUT_FOLDER)
+            _frames_until_render = RENDER_INTERVAL
+        _frames_until_render = _frames_until_render - 1
 
 def reset_scene1(context, first_time):
     pass
 
 def handle_scene1(context):
-    duration_multiplier = 1.0
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
     checks = [
         # check function name,                       duration
         ("check_drop_down_spinning_wheel",           5),
@@ -162,7 +176,7 @@ def reset_scene2(context, first_time):
         start_drop_down_spinning_wheel_animation(context, spinning_wheel, 0)
 
 def handle_scene2(context):
-    duration_multiplier = 0.3
+    duration_multiplier = 0.3 * SPEED_MULTIPLIER
     checks = [
         # check function name,         duration
         ("check_spin_wheel",           40),
@@ -183,7 +197,7 @@ def reset_scene3(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene3(context):
-    duration_multiplier = 1.0
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,         duration
@@ -208,7 +222,7 @@ def reset_scene4(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene4(context):
-    duration_multiplier = 1.0
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,         duration
@@ -233,7 +247,7 @@ def reset_scene5(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene5(context):
-    duration_multiplier = 1.0
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,          duration
@@ -259,7 +273,7 @@ def reset_scene6(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene6(context):
-    duration_multiplier = 1.0
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,          duration
@@ -287,7 +301,7 @@ def reset_scene7(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene7(context):
-    duration_multiplier = 1.0
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,          duration
@@ -316,7 +330,7 @@ def reset_scene8(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene8(context):
-    duration_multiplier = 0.2
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,          duration
@@ -345,7 +359,7 @@ def reset_scene9(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene9(context):
-    duration_multiplier = 1.0
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,          duration
@@ -374,7 +388,7 @@ def reset_scene10(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene10(context):
-    duration_multiplier = 1.0
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,          duration
@@ -415,7 +429,7 @@ def reset_scene11(context, first_time):
 
 
 def handle_scene11(context):
-    duration_multiplier = 1.0
+    duration_multiplier = 1.0 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,          duration
@@ -450,7 +464,7 @@ def handle_scene11(context):
 
 
 def handle_checks(context, checks, duration_multiplier):
-    total_duration = sum(scale_duration(duration, duration_multiplier) for _, duration in checks) + 2
+    total_duration = sum((scale_duration(duration, duration_multiplier) + 1) for _, duration in checks) + 2
     context.action_duration_num_frames = total_duration
     start_frame = 1
     for func_name, duration in checks:
@@ -458,7 +472,7 @@ def handle_checks(context, checks, duration_multiplier):
         duration_scaled = scale_duration(duration, duration_multiplier)
         #print(f"calling {func_name}")
         fn(context, total_duration, start_frame, duration_scaled)
-        start_frame += duration_scaled
+        start_frame += (duration_scaled + 1)
 
 def scale_duration(duration_num_frames, duration_multiplier):
     return max(1, int(duration_num_frames * duration_multiplier))

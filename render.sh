@@ -28,12 +28,16 @@ else
   num_cpus=0
   start_frame=-1
   end_frame=-1
+  render_interval=0
+  speed_multiplier=1
   server=""
   for arg in "$@"; do
       if [[ "$arg" == --scene=*    ]];         then scene="${arg#*=}";       fi
       if [[ "$arg" == --num_cpus=*    ]];      then num_cpus="${arg#*=}";    fi
       if [[ "$arg" == --start_frame=*    ]];   then start_frame="${arg#*=}"; fi
       if [[ "$arg" == --end_frame=*    ]];     then end_frame="${arg#*=}";   fi
+      if [[ "$arg" == --render_interval=*  ]]; then render_interval="${arg#*=}";   fi
+      if [[ "$arg" == --speed_multiplier=* ]]; then speed_multiplier="${arg#*=}";   fi
       if [[ "$arg" == --server=*    ]];        then server="${arg#*=}";      fi
   done
 
@@ -59,7 +63,8 @@ else
     ssh "${server}" "rm -rdf /tmp/temp_render 2>/dev/null"
     ssh "${server}" "mkdir -p /tmp/temp_render"
     ssh "${server}" "tar -xzf /tmp/archive.tar.gz -C /tmp/temp_render"
-    cmd="/tmp/temp_render/render.sh --scene=${scene} --num_cpus=${num_cpus} --start_frame=${start_frame} --end_frame=${end_frame}"
+    cmd="/tmp/temp_render/render.sh --scene=${scene} --num_cpus=${num_cpus} --start_frame=${start_frame} --end_frame=${end_frame} --render_interval=${render_interval} --speed_multiplier=${speed_multiplier}"
+
     echo "server: ${server}"
     echo "cmd   : ${cmd}"
 
@@ -86,6 +91,8 @@ else
     echo "  --num_cpus=4"
     echo "  --start_frame=40"
     echo "  --end_frame=60"
+    echo "  --render_interval=5"
+    echo "  --speed_multiplier=0.5"
     exit 1
   fi
 
@@ -105,7 +112,7 @@ else
   fi
 
   cd "${script_dir}" || exit 1
-  docker run "${num_cpus_args}" -it --rm --entrypoint /bin/bash -u "$(id -u):$(id -g)" -v "${dest}:/dest" -e "ACTIVE_SCENE=scene${scene}" -e "FRAME_START=${start_frame}" -e "FRAME_END=${end_frame}" iqip_ia_presentation_render -c "/project/render.sh entrypoint"
+  docker run "${num_cpus_args}" -it --rm --entrypoint /bin/bash -u "$(id -u):$(id -g)" -v "${dest}:/dest" -e "ACTIVE_SCENE=scene${scene}" -e "RENDER_INTERVAL=${render_interval}" -e "SPEED_MULTIPLIER=${speed_multiplier}" -e "FRAME_START=${start_frame}" -e "FRAME_END=${end_frame}" iqip_ia_presentation_render -c "/project/render.sh entrypoint"
   if [ "$?" -ne 0 ]; then
     printf "${color_red}failed to run iqip_ia_presentation_render docker ${color_reset} \n"
     exit 1
