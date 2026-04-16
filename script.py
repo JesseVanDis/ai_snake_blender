@@ -16,7 +16,7 @@ def getenv_int(name, default=0):
     except ValueError:
         return default
 
-debug_scene="scene2"
+debug_scene="scene3"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
@@ -1019,7 +1019,7 @@ def color_disk_section(context, disk_obj, section_label, color):
     mesh = disk.data
     bm = bmesh.new()
     bm.from_mesh(mesh)
-    color_layer = bm.verts.layers.float_color.get("color")
+    color_layer = bm.verts.layers.float_color.get("col")
     if color_layer is None:
         raise Exception("Color attribute 'color' not found") # please add a vertex_color attribute and name it "color"
     for face in bm.faces:
