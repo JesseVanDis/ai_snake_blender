@@ -67,7 +67,7 @@ else
     (
       while test -f /tmp/render_running; do
           rsync -av --remove-source-files --ignore-existing "${server}":/tmp/temp_render/output/scene_${scene}/ ./output/scene_${scene}
-          sleep 30
+          sleep 120
       done
     ) &
 

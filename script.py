@@ -16,7 +16,7 @@ def getenv_int(name, default=0):
     except ValueError:
         return default
 
-debug_scene="scene5"
+debug_scene="scene6"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
