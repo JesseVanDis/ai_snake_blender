@@ -4,13 +4,13 @@ if [ "${1}" == "entrypoint" ]; then
   export OUTPUT_FOLDER="/dest"
   export RENDERING_ENABLED=True
 
-  if [ ! -z "$(ls /dest | grep frame | grep png)" ]; then
-    second_latest_frame=$(ls /dest/frame_*.png | sed -E 's/[^0-9]*([0-9]+).*/\1/' | sort -n | uniq | tail -n 2 | head -n 1 | awk '{print $1+0}')
-    if [ "${FRAME_START}" -eq "-1" ]; then
-      export FRAME_START=${second_latest_frame}
-      echo "latest frame: ${FRAME_START}"
-    fi
-  fi
+#  if [ ! -z "$(ls /dest | grep frame | grep png)" ]; then
+#    second_latest_frame=$(ls /dest/frame_*.png | sed -E 's/[^0-9]*([0-9]+).*/\1/' | sort -n | uniq | tail -n 2 | head -n 1 | awk '{print $1+0}')
+#    if [ "${FRAME_START}" -eq "-1" ]; then
+#      export FRAME_START=${second_latest_frame}
+#      echo "latest frame: ${FRAME_START}"
+#    fi
+#  fi
 
   blender -b ai_presentation.blend -P main.py
 
@@ -22,17 +22,62 @@ else
   script_filepath=$(basename "$0")
   script_path=$(realpath ${0})
   script_dir=$(realpath "$(dirname "$script_path")")
+  cd "${script_dir}"
 
   scene=0
   num_cpus=0
   start_frame=-1
   end_frame=-1
+  server=""
   for arg in "$@"; do
       if [[ "$arg" == --scene=*    ]];         then scene="${arg#*=}";       fi
       if [[ "$arg" == --num_cpus=*    ]];      then num_cpus="${arg#*=}";    fi
       if [[ "$arg" == --start_frame=*    ]];   then start_frame="${arg#*=}"; fi
       if [[ "$arg" == --end_frame=*    ]];     then end_frame="${arg#*=}";   fi
+      if [[ "$arg" == --server=*    ]];        then server="${arg#*=}";      fi
   done
+
+  dest="$(pwd)/output/scene_${scene}"
+  if [ ! -d "${dest}" ]; then
+    mkdir -p "${dest}"
+  fi
+
+  if [ "${start_frame}" -lt 0 ]; then
+    start_frame=0
+    if [ ! -z "$(ls "${dest}" | grep frame | grep png)" ]; then
+      cd "${dest}"
+      start_frame=$(ls frame_*.png | sed -E 's/[^0-9]*([0-9]+).*/\1/' | sort -n | uniq | tail -n 2 | head -n 1 | awk '{print $1+0}')
+      echo "starting from frame '${start_frame}'"
+      cd "${script_dir}"
+    fi
+  fi
+
+  if [ ! -z "${server}" ]; then
+    tar --exclude='./output' --exclude='./__pycache__' --exclude='.git' --exclude='*.blend1' -czvf /tmp/archive.tar.gz .
+    scp /tmp/archive.tar.gz "${server}":/tmp/
+
+    ssh "${server}" "rm -rdf /tmp/temp_render 2>/dev/null"
+    ssh "${server}" "mkdir -p /tmp/temp_render"
+    ssh "${server}" "tar -xzf /tmp/archive.tar.gz -C /tmp/temp_render"
+    cmd="/tmp/temp_render/render.sh --scene=${scene} --num_cpus=${num_cpus} --start_frame=${start_frame} --end_frame=${end_frame}"
+    echo "server: ${server}"
+    echo "cmd   : ${cmd}"
+
+    touch /tmp/render_running
+    (
+      while test -f /tmp/render_running; do
+          rsync -av --remove-source-files --ignore-existing "${server}":/tmp/temp_render/output/scene_${scene}/ ./output/scene_${scene}
+          sleep 30
+      done
+    ) &
+
+    ssh -t "${server}" "${cmd}"
+    #rsync -av --ignore-existing "${server}":/tmp/temp_render/output/scene_${scene} ./output/
+    echo "Exitting"
+    rm -f /tmp/render_running
+    exit 0
+  fi
+
 
   if [ "${scene}" -eq "0" ]; then
     echo "please run with the scene number argument. example: render.sh --scene=3"
@@ -51,11 +96,6 @@ else
   num_cpus_args=""
   if [ "$num_cpus" -gt 0 ]; then
       num_cpus_args="--cpus=${num_cpus}"
-  fi
-
-  dest="$(pwd)/output/scene_${scene}"
-  if [ ! -d "${dest}" ]; then
-    mkdir -p "${dest}"
   fi
 
   docker build ${docker_build_extra_args} -t "iqip_ia_presentation_render" -f "${script_dir}/Dockerfile" ${script_dir} --progress=plain
