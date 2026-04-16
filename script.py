@@ -22,7 +22,7 @@ def getenv_float(name, default=0.0):
     except ValueError:
         return default
 
-debug_scene="scene9"
+debug_scene="scene10"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
