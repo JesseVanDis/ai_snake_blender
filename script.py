@@ -4,6 +4,7 @@ import bmesh
 import mathutils
 import random
 import re
+import os
 import time
 from mathutils import Vector
 
@@ -36,14 +37,29 @@ class SceneContext:
         self.chance_table = chance_table
         self.first_snake_apple_location = [Vector((3, -2.7))]
 
+def render_and_save_current_frame(folder):
+    scene = bpy.context.scene
+    frame = scene.frame_current
+    folder = bpy.path.abspath(folder)
+    os.makedirs(folder, exist_ok=True)
+    filepath = os.path.join(folder, f"frame_{frame:06d}.png")
+    scene.render.filepath = filepath
+    bpy.ops.render.render(write_still=True)
+
+_last_frame = None
 
 def handle_frame(scene):
+    global _last_frame
+    frame = scene.frame_current
+    if frame == _last_frame:
+        return
+    _last_frame = frame
+    print("Running logic for frame:", frame)
+
     timer_start = time.perf_counter()
 
-
-
     configs = [
-        #("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), STARTING_GUY_POS)),
+        ("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), STARTING_GUY_POS)),
         #("scene2", ()),
         #("scene3", ((180, 180, 180, 180, 180), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y - 2, STARTING_GUY_POS.z)))),
         #("scene4", ((0, 0, 0, 0, 0), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + 2, STARTING_GUY_POS.z)), 0.4)),
@@ -53,7 +69,7 @@ def handle_frame(scene):
         #("scene8", ((), STARTING_GUY_POS, 0.3)),
         #("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.3, True)),
         #("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+        #("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
 
 #return Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + context.guy_starting_pos_offset, STARTING_GUY_POS.z))
@@ -72,6 +88,7 @@ def handle_frame(scene):
 
         delete_generated_meshes()
         reset_snake(scene)
+        delete_trashed_objects(scene)
 
     if scene.frame_current == 1 or scene.frame_current == 2:
         for name, ctx in ctxs:
@@ -88,7 +105,9 @@ def handle_frame(scene):
     timer_end = time.perf_counter()
     duration_us = (timer_end - timer_start) * 1_000_000
     #print(f"frame {scene.frame_current} took {duration_us:.1f} µs")
-
+    if scene.frame_current > 2:
+        print(f"Rendering frame '{scene.frame_current}'...")
+        render_and_save_current_frame("//output/")
 
 def reset_scene1(context, first_time):
     pass
@@ -96,13 +115,14 @@ def reset_scene1(context, first_time):
 def handle_scene1(context):
     duration_multiplier = 1.0
     checks = [
-        # check function name,              duration
-        ("check_drop_down_spinning_wheel",  5),
-        ("check_spin_wheel",                40),
-        ("check_pick_up_spinning_wheel",    5),
-        ("check_jump_guy",                  11),
-        ("check_reward_or_penalty",         5),
-        ("check_action_end",                1)
+        # check function name,                       duration
+        ("check_drop_down_spinning_wheel",           5),
+        ("check_spin_wheel",                         40),
+        ("check_pick_up_spinning_wheel",             5),
+        ("check_jump_guy",                           11),
+        ("check_reward_or_penalty",                  5),
+        ("check_pause",                              10),
+        ("check_action_end",                         1)
     ]
 
     handle_checks(context, checks, duration_multiplier)
@@ -413,7 +433,7 @@ def handle_checks(context, checks, duration_multiplier):
 def scale_duration(duration_num_frames, duration_multiplier):
     return max(1, int(duration_num_frames * duration_multiplier))
 
-def init(context):
+def init(context: SceneContext):
     context.scene_obj.pop("reset_called", None)
     guy = get_guy(context)
     if context.frame_current <= 1:
@@ -423,9 +443,9 @@ def init(context):
             if not path.startswith("_ignore") and not path.startswith("_prefabs"):
                 # print(f"deleting '{get_object_path(obj)}'")
                 try:
-                    delete_object_recursive(obj)
+                    move_objects_to_trash_recursive(context.global_scene, obj)
                 except Exception as e:
-                    print(f"Delete failed: {e}")
+                    print(f"move to trash failed: {e}")
 
         context.scene_obj["spinning_wheels"] = list([])
         print("Cleared list")
@@ -721,7 +741,7 @@ def delete_tail(global_scene, starting_tail_obj):
     if starting_tail_obj is None:
         return
     number = get_tail_number(starting_tail_obj.name)
-    delete_object_recursive(starting_tail_obj)
+    move_objects_to_trash_recursive(global_scene, starting_tail_obj)
     delete_tail(global_scene.objects.get(f"tail_{(number + 1)}"))
 
 def reset_snake(global_scene):
@@ -873,24 +893,24 @@ def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
         return 0 # fallback if not found
 
     
-    def apply_colors(disk, sections):
-        mesh = disk.data
-        bm = bmesh.new()
-        bm.from_mesh(mesh)
-        for face in bm.faces:      
-            # Only operate on top faces (normal pointing up)  
-            if not is_disk_face_part_of_section(disk, face):
-                continue
-
-            for sec in sections:
-                if is_disk_face_part_of_section(disk, face, sec.label):
-                    sec_index = material_index_from_label_object(disk, sec.label)
-                    if sec_index < len(mesh.materials):
-                        face.material_index = sec_index
-
-        bm.to_mesh(mesh)
-        bm.free()
-        mesh.update()
+    # def apply_colors(disk, sections):
+    #     mesh = disk.data
+    #     bm = bmesh.new()
+    #     bm.from_mesh(mesh)
+    #     for face in bm.faces:
+    #         # Only operate on top faces (normal pointing up)
+    #         if not is_disk_face_part_of_section(disk, face):
+    #             continue
+    #
+    #         for sec in sections:
+    #             if is_disk_face_part_of_section(disk, face, sec.label):
+    #                 sec_index = material_index_from_label_object(disk, sec.label)
+    #                 if sec_index < len(mesh.materials):
+    #                     face.material_index = sec_index
+    #
+    #     bm.to_mesh(mesh)
+    #     bm.free()
+    #     mesh.update()
         
     def add_section_bars(disk, sections):
         template = next((c for c in disk.children if c.name.startswith("bar")), None)
@@ -951,7 +971,7 @@ def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
         for sec in sections
     ]
     reset_spinning_wheel(context, spinning_wheel_obj)
-    apply_colors(disk, sections)
+    # apply_colors(disk, sections)
     add_section_bars(disk, sections)
     add_section_labels(disk, sections)
 
@@ -2092,19 +2112,30 @@ def make_object_and_children_visible_to_renderer(obj):
     obj.hide_render = False
     for child in obj.children:
         make_object_and_children_visible_to_renderer(child)
-    
-def delete_object_recursive(obj):
-    if obj is None:
-        return
-    # First delete all children recursively
+
+def move_objects_to_trash_recursive(global_scene, obj):
+    trash_obj = global_scene.objects["trash"]
+
+    # # First move all children recursively
     children = list(obj.children)
     for child in children:
-        delete_object_recursive(child)
+        move_objects_to_trash_recursive(global_scene, child)
+    obj.parent = trash_obj
+    obj.name = "remove_me"
+    pass
 
-    # Then unlink and remove this object
-    for col in obj.users_collection:
-        col.objects.unlink(obj)
-    bpy.data.objects.remove(obj)        
+def delete_trashed_objects(global_scene):
+    trash_obj = global_scene.objects["trash"]
+    names_to_remove = []
+    for child in trash_obj.children:
+        if child.name.startswith("remove_me"):
+            names_to_remove.append(child.name)
+
+    for object_name_to_remove in names_to_remove:
+        obj = global_scene.objects[object_name_to_remove]
+        for col in obj.users_collection:
+            col.objects.unlink(obj)
+        bpy.data.objects.remove(obj)
 
 def name_contains_key(name, key):
     if ("_" + key + "_") in name:
@@ -2259,12 +2290,9 @@ def delete_generated_meshes():
 
 def get_object_path(obj):
     parts = []
-    while obj:
-        try:
-            parts.append(obj.name)
-            obj = obj.parent
-        except ReferenceError:
-            break
+    while obj is not None:
+        parts.append(obj.name)
+        obj = obj.parent
     return "/".join(reversed(parts))
 
 def point_object_to_internal(world_pos, obj, track_axis='Z', up_axis='Y', invert = False):
