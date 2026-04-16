@@ -10,8 +10,6 @@ from mathutils import Vector
 
 # https://www.youtube.com/watch?v=jeoJZ8XGJCg
 
-bpy.app.handlers.frame_change_post.clear()
-
 def getenv_int(name, default=0):
     try:
         return int(os.getenv(name, default))
@@ -24,7 +22,7 @@ _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
 OUTPUT_FOLDER = os.getenv("OUTPUT_FOLDER", "//output/")
 FRAME_START = getenv_int("FRAME_START", -1)
-ACTIVE_SCENE = os.getenv("ACTIVE_SCENE", "scene1")
+ACTIVE_SCENE = os.getenv("ACTIVE_SCENE", "")
 STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
 GUY_POS_STATE_TILE_OFFSET = Vector((-0.2696, 0, 0.32991))
 ACTION_TILE_POS_Z = 0.747776
@@ -108,6 +106,11 @@ def handle_frame(scene):
         for _, ctx in ctxs:
             init(ctx)
 
+        if len(configs) == 1:
+            camera = find_recursive(ctx, ctx, "Camera", False, 2)
+            print(f"Assigning '{camera.name}' as render camera")
+            bpy.context.scene.camera = camera
+
         delete_generated_meshes()
         reset_snake(scene)
         delete_trashed_objects(scene)
@@ -164,6 +167,7 @@ def handle_scene2(context):
         ("check_spin_wheel",           40),
         ("check_jump_guy",             11),
         ("check_reward_or_penalty",    5),
+        ("check_pause",                10),
         ("check_action_end",           1)
     ]
 

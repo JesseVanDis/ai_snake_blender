@@ -5,11 +5,17 @@ import mathutils
 import os
 import sys
 import time
+import importlib
+
+bpy.app.handlers.frame_change_post.clear()
 
 project_dir = os.path.dirname(os.path.abspath(__file__))
+if project_dir.endswith(".blend"):
+    project_dir = os.path.dirname(project_dir)
 sys.path.append(project_dir)
 
 import script
+importlib.reload(script)
 
 if script.FRAME_START >= 0:
     scene = bpy.context.scene
