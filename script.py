@@ -22,7 +22,7 @@ def getenv_float(name, default=0.0):
     except ValueError:
         return default
 
-debug_scene="scene8"
+debug_scene="scene9"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
@@ -91,7 +91,7 @@ def handle_frame(scene):
         ("scene6", ((180), STARTING_GUY_POS)),
         ("scene7", ((180), STARTING_GUY_POS, 0.3)),
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
-        ("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.3, True)),
+        ("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
         ("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
@@ -578,6 +578,7 @@ def check_compare_or_spin_wheel(context, total_duration_num_frames, check_frame_
 
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         should_spin = is_dice_on_spin(context)
+        print(f"is dice on spin: {should_spin}")
         if disk_has_equal_section_qualities(context):
             should_spin = True
 
@@ -2102,8 +2103,17 @@ def is_dice_on_spin(context):
     dice = get_dice(context, False)
     if dice is None:
         return False
-    side = get_world_up(dice)
-    return side.z > 0.9
+    if "result_is_spin" not in dice:
+        return False
+    on_spin = dice["result_is_spin"]
+    #print(f"on stpinnn:: {on_spin}, for : {dice.name}")
+    return on_spin
+        #dice["result_is_spin"] = side.z > 0.9
+    #spin_side_obj = find_recursive(context, dice, "spin_side", False, 2)
+    #spin_side_pos = get_world_location(spin_side_obj)
+    #side = get_world_up(dice)
+    #print(f"side: {side}. pos: ${spin_side_pos}")
+    #return spin_side_pos.z > 3.0
 
 def handle_dice(context):
     bounce_height = 1
@@ -2152,6 +2162,11 @@ def handle_dice(context):
             dice.location.z = 0
             dice_sub_base.scale = (1-anim_pickup, 1-anim_pickup, 1-anim_pickup)
         if anim_pickup >= 1:
+            #spin_side_obj = find_recursive(context, dice, "spin_side", False, 2)
+            #spin_side_pos = get_world_location(spin_side_obj)
+            side = get_world_up(dice)
+            #print(f"side: {side}. is spin: {side.z > 0.9}. for: {dice.name}")
+            dice["result_is_spin"] = side.z > 0.9
             dice_sub_base.hide_viewport = False
             dice_sub_base.hide_render = True
             dice_sub_base.scale = (0,0,0)
