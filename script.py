@@ -479,7 +479,6 @@ def check_win_extend_snake_and_move_apple(context, total_duration_num_frames, ch
         tile = get_tile_at_snake_head(context)
         apple = find_recursive(context, tile, "apple")
         if apple is not None:
-            extend_snake(context)
             randomize_snake_apple_position(context)
 
 
