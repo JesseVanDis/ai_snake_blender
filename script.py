@@ -22,6 +22,7 @@ _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
 OUTPUT_FOLDER = os.getenv("OUTPUT_FOLDER", "//output/")
 FRAME_START = getenv_int("FRAME_START", -1)
+FRAME_END = getenv_int("FRAME_END", -1)
 ACTIVE_SCENE = os.getenv("ACTIVE_SCENE", "")
 STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
 GUY_POS_STATE_TILE_OFFSET = Vector((-0.2696, 0, 0.32991))

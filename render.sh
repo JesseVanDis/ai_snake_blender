@@ -6,7 +6,6 @@ if [ "${1}" == "entrypoint" ]; then
 
   if [ ! -z "$(ls /dest | grep frame | grep png)" ]; then
     second_latest_frame=$(ls /dest/frame_*.png | sed -E 's/[^0-9]*([0-9]+).*/\1/' | sort -n | uniq | tail -n 2 | head -n 1 | awk '{print $1+0}')
-    echo "${FRAME_START}"
     if [ "${FRAME_START}" -eq "-1" ]; then
       export FRAME_START=${second_latest_frame}
       echo "latest frame: ${FRAME_START}"
@@ -27,14 +26,21 @@ else
   scene=0
   num_cpus=0
   start_frame=-1
+  end_frame=-1
   for arg in "$@"; do
-      if [[ "$arg" == --scene=*    ]];         then scene="${arg#*=}";      fi
-      if [[ "$arg" == --num_cpus=*    ]];      then num_cpus="${arg#*=}";   fi
-      if [[ "$arg" == --start_frame=*    ]];   then start_frame="${arg#*=}";   fi
+      if [[ "$arg" == --scene=*    ]];         then scene="${arg#*=}";       fi
+      if [[ "$arg" == --num_cpus=*    ]];      then num_cpus="${arg#*=}";    fi
+      if [[ "$arg" == --start_frame=*    ]];   then start_frame="${arg#*=}"; fi
+      if [[ "$arg" == --end_frame=*    ]];     then end_frame="${arg#*=}";   fi
   done
 
   if [ "${scene}" -eq "0" ]; then
-    echo "please run with the scene number argument. example: render.sh --scene=3 --num_cpus=4"
+    echo "please run with the scene number argument. example: render.sh --scene=3"
+    echo "options examples:"
+    echo "  --scene=3"
+    echo "  --num_cpus=4"
+    echo "  --start_frame=40"
+    echo "  --end_frame=60"
     exit 1
   fi
 
@@ -59,7 +65,7 @@ else
   fi
 
   cd "${script_dir}" || exit 1
-  docker run "${num_cpus_args}" -it --rm --entrypoint /bin/bash -u "$(id -u):$(id -g)" -v "${dest}:/dest" -e "ACTIVE_SCENE=scene${scene}" -e "FRAME_START=${start_frame}" iqip_ia_presentation_render -c "/project/render.sh entrypoint"
+  docker run "${num_cpus_args}" -it --rm --entrypoint /bin/bash -u "$(id -u):$(id -g)" -v "${dest}:/dest" -e "ACTIVE_SCENE=scene${scene}" -e "FRAME_START=${start_frame}" -e "FRAME_END=${end_frame}" iqip_ia_presentation_render -c "/project/render.sh entrypoint"
   if [ "$?" -ne 0 ]; then
     printf "${color_red}failed to run iqip_ia_presentation_render docker ${color_reset} \n"
     exit 1

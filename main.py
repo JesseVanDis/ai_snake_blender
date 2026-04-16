@@ -30,6 +30,13 @@ if script.FRAME_START >= 0:
         print(f"Handling frame '{frame_index}'")
         script.handle_frame(scene)
         frame_index = frame_index + 1
+
+        if script.FRAME_END > 0:
+            if frame_index > script.FRAME_END:
+                print("frame index hit the FRAME_END env. arg. Quitting blender.")
+                bpy.ops.wm.quit_blender()
+                sys.exit(0)
+
 else:
     # register handler once
     if script.handle_frame not in bpy.app.handlers.frame_change_post:
