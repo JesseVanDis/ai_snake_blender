@@ -91,7 +91,7 @@ def handle_frame(scene):
         ("scene6", ((180), STARTING_GUY_POS)),
         ("scene7", ((180), STARTING_GUY_POS, 0.3)),
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
-        ("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.7, True)),
+        ("scene9", ((180), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
         ("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
