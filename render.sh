@@ -4,20 +4,16 @@ if [ "${1}" == "entrypoint" ]; then
   export OUTPUT_FOLDER="/dest"
   export RENDERING_ENABLED=True
 
-  export FRAME_START=0
-  files=(/dest/frame_*.png)
-  if [ ${#files[@]} -gt 1 ]; then
+  if [ ! -z "$(ls /dest | grep frame | grep png)" ]; then
     second_latest_frame=$(ls /dest/frame_*.png | sed -E 's/[^0-9]*([0-9]+).*/\1/' | sort -n | uniq | tail -n 2 | head -n 1 | awk '{print $1+0}')
+    echo "${FRAME_START}"
     if [ "${FRAME_START}" -eq "-1" ]; then
       export FRAME_START=${second_latest_frame}
       echo "latest frame: ${FRAME_START}"
     fi
   fi
 
-  echo "frame start: '${FRAME_START}'"
   blender -b ai_presentation.blend -P main.py
-
-  #blender -b your_scene.blend -P your_script.py
 
 
 else
