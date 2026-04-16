@@ -12,13 +12,24 @@ from mathutils import Vector
 
 bpy.app.handlers.frame_change_post.clear()
 
-RENDERING_ENABLED = False
+def getenv_int(name, default=0):
+    try:
+        return int(os.getenv(name, default))
+    except ValueError:
+        return default
+
+_should_render = False
+RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
+OUTPUT_FOLDER = os.getenv("OUTPUT_FOLDER", "//output/")
+FRAME_START = getenv_int("FRAME_START", -1)
+ACTIVE_SCENE = os.getenv("ACTIVE_SCENE", "scene1")
 STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
 GUY_POS_STATE_TILE_OFFSET = Vector((-0.2696, 0, 0.32991))
 ACTION_TILE_POS_Z = 0.747776
 
 EPS = 1e-6
 FLIPPER_DIRECTION = 90
+
 
 class SceneContext:
     def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")]):
@@ -51,6 +62,7 @@ _last_frame = None
 
 def handle_frame(scene):
     global _last_frame
+    global _should_render
     frame = scene.frame_current
     if frame == _last_frame:
         return
@@ -58,22 +70,26 @@ def handle_frame(scene):
 
     timer_start = time.perf_counter()
 
-    configs = [
-        #("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), STARTING_GUY_POS)),
-        #("scene2", ()),
-        #("scene3", ((180, 180, 180, 180, 180), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y - 2, STARTING_GUY_POS.z)))),
-        #("scene4", ((0, 0, 0, 0, 0), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + 2, STARTING_GUY_POS.z)), 0.4)),
-        #("scene5", ((180, 0, 180, 180, 180, 0, 0, 180, 0, 0, 0), 0, 0.4)),
-        #("scene6", ((180), STARTING_GUY_POS)),
-        #("scene7", ((180), STARTING_GUY_POS, 0.3)),
-        #("scene8", ((), STARTING_GUY_POS, 0.3)),
-        #("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.3, True)),
-        #("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+    configs_candidates = [
+        ("scene1", ((10, 360-40, 160, 40, 80, 170, 40, 100, 190, 10, 210, 100), STARTING_GUY_POS)),
+        ("scene2", ()),
+        ("scene3", ((180, 180, 180, 180, 180), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y - 2, STARTING_GUY_POS.z)))),
+        ("scene4", ((0, 0, 0, 0, 0), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + 2, STARTING_GUY_POS.z)), 0.4)),
+        ("scene5", ((180, 0, 180, 180, 180, 0, 0, 180, 0, 0, 0), 0, 0.4)),
+        ("scene6", ((180), STARTING_GUY_POS)),
+        ("scene7", ((180), STARTING_GUY_POS, 0.3)),
+        ("scene8", ((), STARTING_GUY_POS, 0.3)),
+        ("scene9", ((180, 180, 180, 180, 180, 180, 180), STARTING_GUY_POS, 0.3, True)),
+        ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
         ("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
     ]
 
-#return Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + context.guy_starting_pos_offset, STARTING_GUY_POS.z))
-
+    config = next((cfg for cfg in configs_candidates if cfg[0] == ACTIVE_SCENE), None)
+    configs = []
+    if config is None:
+        configs = configs_candidates
+    else:
+        configs.append(config)
 
     ctxs = []
 
@@ -105,9 +121,9 @@ def handle_frame(scene):
     timer_end = time.perf_counter()
     duration_us = (timer_end - timer_start) * 1_000_000
     #print(f"frame {scene.frame_current} took {duration_us:.1f} µs")
-    if RENDERING_ENABLED and scene.frame_current > 2:
+    if _should_render and scene.frame_current > 2:
         print(f"Rendering frame '{scene.frame_current}'...")
-        render_and_save_current_frame("//output/")
+        render_and_save_current_frame(OUTPUT_FOLDER)
 
 def reset_scene1(context, first_time):
     pass
@@ -1203,7 +1219,7 @@ def spin_spinning_wheel(context, spinning_wheel_base_obj, target_angle=-9999.0, 
     while not is_valid_choice(context, get_spinning_wheel_label_at_angle(context, sections, math.radians(actual_target_angle))): # HACK: skip invalid choises
         actual_target_angle = actual_target_angle + 10
         print(f"Invalid choice, adding 10 degrees. now target angle: {actual_target_angle}")
-    print(f"target angle: {actual_target_angle}")
+    #print(f"target angle: {actual_target_angle}")
     disk["start_spin_frame"] = context.frame_current
     spinning_wheel_base_obj["start_spin_frame"] = context.frame_current # also apply on base, as its faster to read
     disk["end_spin_frame"] = context.frame_current + duration_num_frames
@@ -2117,11 +2133,6 @@ def handle_dice(context):
             dice.location.z = 0
             dice.pop("start_throw_frame", None)
             guy.pop("start_throw_frame", None)
-
-# register handler once
-if handle_frame not in bpy.app.handlers.frame_change_post:
-    bpy.app.handlers.frame_change_post.append(handle_frame)
-    
     
 # ========= UTIL FUNCTIONS ===========
 def duplicate_object_with_children(template, parent, reference = True, is_root = True):
