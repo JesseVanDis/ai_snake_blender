@@ -16,7 +16,7 @@ def getenv_int(name, default=0):
     except ValueError:
         return default
 
-debug_scene="scene4"
+debug_scene="scene5"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
@@ -76,7 +76,7 @@ def handle_frame(scene):
         ("scene2", ()),
         ("scene3", ((180, 180, 180, 180, 180), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y - 2, STARTING_GUY_POS.z)))),
         ("scene4", ((0, 0, 0, 0, 0), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + 2, STARTING_GUY_POS.z)), 0.4)),
-        ("scene5", ((180, 0, 180, 180, 180, 0, 0, 180, 0, 0, 0), 0, 0.4)),
+        ("scene5", ((180, 0, 180, 180, 180, 0, 0, 180, 0, 0, 0), STARTING_GUY_POS, 0.4)),
         ("scene6", ((180), STARTING_GUY_POS)),
         ("scene7", ((180), STARTING_GUY_POS, 0.3)),
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
