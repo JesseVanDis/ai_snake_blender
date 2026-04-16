@@ -86,9 +86,9 @@ def handle_frame(scene):
         for _, ctx in ctxs:
             init(ctx)
 
-        time_function(delete_generated_meshes)
-        time_function(reset_snake, scene)
-        time_function(delete_trashed_objects, scene)
+        delete_generated_meshes()
+        reset_snake(scene)
+        delete_trashed_objects(scene)
 
     if scene.frame_current == 1 or scene.frame_current == 2:
         for name, ctx in ctxs:
@@ -372,9 +372,9 @@ def handle_scene10(context):
 def reset_scene11(context, first_time):
     global GUY_POS_STATE_TILE_OFFSET
     for tile in find_recursive_list(context, context, "tile_state_"):
-        time_function(start_drop_down_spinning_wheel_animation, context, get_spinning_wheel_at_tile(context, tile), 0)
+        start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
         if first_time:
-            time_function(add_quality_bar_to_spinning_wheel, context, tile)
+            add_quality_bar_to_spinning_wheel(context, tile)
     if first_time:
         #reset_snake(context.global_scene)
         guy = get_guy(context)
