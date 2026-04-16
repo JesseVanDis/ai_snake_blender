@@ -18,6 +18,8 @@ def getenv_int(name, default=0):
     except ValueError:
         return default
 
+debug_scene="scene2"
+
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
 OUTPUT_FOLDER = os.getenv("OUTPUT_FOLDER", "//output/")
@@ -87,7 +89,11 @@ def handle_frame(scene):
     config = next((cfg for cfg in configs_candidates if cfg[0] == ACTIVE_SCENE), None)
     configs = []
     if config is None:
-        configs = configs_candidates
+        if debug_scene is not None:
+            debug_config = next((cfg for cfg in configs_candidates if cfg[0] == debug_scene), None)
+            configs.append(debug_config)
+        else:
+            configs = configs_candidates
     else:
         configs.append(config)
 

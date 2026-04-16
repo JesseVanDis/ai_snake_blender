@@ -4,6 +4,12 @@ if [ "${1}" == "entrypoint" ]; then
   export OUTPUT_FOLDER="/dest"
   export RENDERING_ENABLED=True
 
+  second_latest_frame=$(ls /dest/frame_*.png | sed -E 's/[^0-9]*([0-9]+).*/\1/' | sort -n | uniq | tail -n 2 | head -n 1 | awk '{print $1+0}')
+  if [ "${FRAME_START}" -eq "-1" ]; then
+    export FRAME_START=${second_latest_frame}
+    echo "latest frame: ${FRAME_START}"
+  fi
+
   blender -b ai_presentation.blend -P main.py
 
   #blender -b your_scene.blend -P your_script.py
@@ -19,7 +25,7 @@ else
 
   scene=0
   num_cpus=0
-  start_frame=0
+  start_frame=-1
   for arg in "$@"; do
       if [[ "$arg" == --scene=*    ]];         then scene="${arg#*=}";      fi
       if [[ "$arg" == --num_cpus=*    ]];      then num_cpus="${arg#*=}";   fi
@@ -37,7 +43,7 @@ else
 
   num_cpus_args=""
   if [ "$num_cpus" -gt 0 ]; then
-      num_cpus_args="--cpus=${num_cpus} "
+      num_cpus_args="--cpus=${num_cpus}"
   fi
 
   dest="$(pwd)/output/scene_${scene}"
@@ -52,7 +58,7 @@ else
   fi
 
   cd "${script_dir}" || exit 1
-  docker run "${num_cpus_args}"-it --rm --entrypoint /bin/bash -u "$(id -u):$(id -g)" -v "${dest}:/dest" -e "ACTIVE_SCENE=scene${scene}" -e "FRAME_START=${start_frame}" iqip_ia_presentation_render -c "/project/render.sh entrypoint"
+  docker run "${num_cpus_args}" -it --rm --entrypoint /bin/bash -u "$(id -u):$(id -g)" -v "${dest}:/dest" -e "ACTIVE_SCENE=scene${scene}" -e "FRAME_START=${start_frame}" iqip_ia_presentation_render -c "/project/render.sh entrypoint"
   if [ "$?" -ne 0 ]; then
     printf "${color_red}failed to run iqip_ia_presentation_render docker ${color_reset} \n"
     exit 1
