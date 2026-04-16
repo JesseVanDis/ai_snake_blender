@@ -412,6 +412,7 @@ def handle_scene11(context):
     handle_snake_action(context)
     handle_win_guy(context)
     handle_lost_guy(context)
+    handle_snake_extension(context)
     handle_jump_to_state_guy(context)
     handle_poke_guy(context)
     handle_closely_look_guy(context)
@@ -659,7 +660,7 @@ def check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_
         if name_contains_key(tile.name, "win"):
             win_guy(context, check_duration_num_frames)
             if as_snake:
-                extend_snake(context)
+                extend_snake(context, check_duration_num_frames)
 
 def check_reward_or_penalty(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_index, check_duration_num_frames, False)
@@ -1381,7 +1382,7 @@ def is_penalty_tile(tile_obj):
         return True
     return "_pen" in tile_obj.name
 
-def extend_snake(context: SceneContext):
+def extend_snake(context, duration_num_frames):
     tail = context.global_scene.objects["tail_1"]
     last_tail = tail
     while tail is not None:
@@ -1393,9 +1394,15 @@ def extend_snake(context: SceneContext):
     new_tail = duplicate_object_with_children(last_tail, last_tail.parent)
     new_tail.name = f"tail_{(last_tail_num+1)}"
     new_tail.location = last_tail.location
-    new_tail.location.x = last_tail["tail_action_starting_pos_x"]
-    new_tail.location.y = last_tail["tail_action_starting_pos_y"]
-    print(f"placing new tail at: {new_tail.location.x}, {new_tail.location.y}")
+    new_tail["start_extend_frame"] = context.frame_current
+    new_tail["end_extend_frame"] = context.frame_current + duration_num_frames
+    new_tail["extend_start_pos_x"] = last_tail.location.x
+    new_tail["extend_start_pos_y"] = last_tail.location.y
+    new_tail["extend_end_pos_x"] = last_tail["tail_action_starting_pos_x"]
+    new_tail["extend_end_pos_y"] = last_tail["tail_action_starting_pos_y"]
+    new_tail.location.x = last_tail.location.x
+    new_tail.location.y = last_tail.location.y
+    #print(f"placing new tail at: {new_tail.location.x}, {new_tail.location.y}")
 
 def is_tile_blocked_by_snake(context, tile_obj):
     snake_head = get_snake_head(context)
@@ -1947,8 +1954,6 @@ def handle_jump_to_state_guy(context):
     if handle_jump_guy_to(context, guy, start_frame, end_frame, jump_starting_abs_pos_x, jump_starting_abs_pos_y, target_x, target_y, 10):
         guy.pop("start_jump_to_state_frame", None)
 
-
-
 def handle_snake_action_tail(context, tail):
     if "tail_action_frame_start" not in tail:
         return
@@ -2029,6 +2034,28 @@ def handle_snake_action(context):
     #snake_head.rotation_euler.z = starting_rot_z + (target_rot_z - starting_rot_z) * rotate_anim
 
     handle_snake_action_tail(context, context.global_scene.objects["tail_1"])
+
+def handle_snake_extension_ext(context, tail_obj):
+    if tail_obj is None:
+        return
+
+    tail_number = get_tail_number(tail_obj.name)
+    handle_snake_extension_ext(context, context.global_scene.objects.get(f"tail_{(tail_number + 1)}"))
+    if "start_extend_frame" not in tail_obj:
+        return
+
+    start_frame = tail_obj["start_extend_frame"]
+    end_frame = tail_obj["end_extend_frame"]
+    total_anim = max(0, min((context.frame_current - start_frame) / (end_frame - start_frame), 1), 0)
+    start_pos = Vector((tail_obj["extend_start_pos_x"], tail_obj["extend_start_pos_y"]))
+    end_pos = Vector((tail_obj["extend_end_pos_x"], tail_obj["extend_end_pos_y"]))
+    tail_obj.location.x = start_pos.x + (end_pos.x - start_pos.x) * total_anim
+    tail_obj.location.y = start_pos.y + (end_pos.y - start_pos.y) * total_anim
+    if total_anim >= 1:
+        tail_obj.pop("start_extend_frame", None)
+
+def handle_snake_extension(context):
+    handle_snake_extension_ext(context, context.global_scene.objects["tail_2"])
 
 def is_dice_on_spin(context):
     dice = get_dice(context, False)
