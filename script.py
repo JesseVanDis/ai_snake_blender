@@ -43,7 +43,7 @@ FLIPPER_DIRECTION = 90
 
 
 class SceneContext:
-    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")], spinning_wheel_scale = 1.0, reroll_chance = 6):
+    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")], spinning_wheel_scale = 1.0, reroll_chance = 6, use_thick_spinning_wheel = False):
         self.scene_obj = scene_obj
         self.global_scene = scene
         self.frame_current = scene.frame_current - 3 # hacky offset, initialization stuff...
@@ -61,6 +61,7 @@ class SceneContext:
         self.first_snake_apple_location = [Vector((3, -1.7)), Vector((4, -2.7))]
         self.spinning_wheel_scale = spinning_wheel_scale
         self.reroll_chance = reroll_chance
+        self.use_thick_spinning_wheel = use_thick_spinning_wheel
 
 def render_and_save_current_frame(folder):
     scene = bpy.context.scene
@@ -95,7 +96,7 @@ def handle_frame(scene):
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
         ("scene9", ((170), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((120), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10)),
+        ("scene11", ((), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10, True)),
         #("scene11", ((120, 120, 120, 210, 120), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10)),
     ]
 
@@ -1362,13 +1363,19 @@ def get_spinning_wheel_chance_table(context, tile_obj):
     # chance_table = [(0.5,  "W"), (0.5,  "E")]
     # return chance_table
 
-def get_spinning_wheel_at_tile(context, tile_obj):
+def get_spinning_wheel_at_tile(context: SceneContext, tile_obj):
     spinning_wheel = find_recursive(context, tile_obj, "spinning_wheel_base")
     if spinning_wheel is None:
         # create new wheel then
-        prefab_source = find_prefab(context, "spinning_wheel_base")
+        #thickspinning_wheel_base.002
+        prefab_source = None
+        if context.use_thick_spinning_wheel:
+            prefab_source = find_prefab(context, "thickspinning_wheel_base")
+        else:
+            prefab_source = find_prefab(context, "spinning_wheel_base")
         #print(f"creating from {tile_obj.name}")
         spinning_wheel = duplicate_object_with_children(prefab_source, tile_obj, False)
+        spinning_wheel.name = "gen_spinning_wheel_base"
         #print(f"Generated spinner! {prefab_source} for {tile_obj.name}")
         setup_spinning_wheel(context, spinning_wheel, get_spinning_wheel_chance_table(context, tile_obj))
         wheels = []
