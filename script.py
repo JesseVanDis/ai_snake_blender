@@ -424,16 +424,18 @@ def reset_scene11(context, first_time):
     #for tile in find_recursive_list(context, play_board, "tile_", 3):
     #    tile.pop("had_apple_at_action", None)  <--- apply to guy with index after all!
 
-    if first_time:
-        #reset_snake(context.global_scene)
-        guy = get_guy(context)
-        snake_state = get_state_at_snake_head(context)
-        #print(f"Snake state walls: {snake_state.walls}, apple dir: {snake_state.apple_dir}")
-        tile = find_state_tile(context, snake_state)
-        tile_pos = get_world_location(tile)
-        set_world_location(guy, tile_pos + GUY_POS_STATE_TILE_OFFSET)
-        randomize_snake_apple_position(context)
+    randomize_snake_apple_position(context)
     reset_snake(context.global_scene)
+    #snake_head = get_snake_head(context)
+    bpy.context.view_layer.update()
+    #depsgraph = bpy.context.evaluated_depsgraph_get()
+    #snake_eval = snake_head.evaluated_get(depsgraph)
+
+    snake_state = get_state_at_snake_head(context)
+    tile = find_state_tile(context, snake_state)
+    tile_pos = get_world_location(tile)
+    guy = get_guy(context)
+    set_world_location(guy, tile_pos + GUY_POS_STATE_TILE_OFFSET)
 
 
 def handle_scene11(context):
@@ -702,22 +704,6 @@ def get_tile_penalty_or_reward(context, tile, has_snake):
     penalty = get_tile_penalty(context, tile, has_snake)
     reward = get_tile_reward(context, tile)
     return reward - penalty
-
-def is_tail_on_tile(context, tile):
-    tile_pos = get_world_location(tile)
-    tail = context.global_scene.objects["tail_2"]
-    print(f"--")
-    while tail is not None:
-        tail_pos = get_world_location(tail)
-        dx = abs(tile_pos.x - tail_pos.x)
-        dy = abs(tile_pos.y - tail_pos.y)
-        dist = math.hypot(dx, dy)
-        print(f"dist from '{tile.name}' to '{tail.name}': '{dist}'")
-        if dist < 0.3:
-            return True
-        tail_number = get_tail_number(tail.name)
-        tail = context.global_scene.objects.get(f"tail_{(tail_number+1)}")
-    return False
 
 def check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_index, check_duration_num_frames, as_snake):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -1441,13 +1427,13 @@ def throw_dice(context, duration_num_frames):
     dice["end_throw_frame"] = context.frame_current + duration_num_frames
     dice["ends_at_spin"] = random.randint(1, 6) == 1
 
-def is_penalty_tile(context, tile_obj, has_snake):
+def is_penalty_tile(context, tile_obj, has_snake, exclude_last_tail = False):
     if tile_obj is None:
         return True
     if "_pen" in tile_obj.name:
         return True
     if has_snake:
-        if is_tail_on_tile(context, tile_obj):
+        if is_tail_on_tile(context, tile_obj, exclude_last_tail):
             return True
     return False
 
@@ -1487,6 +1473,26 @@ def is_tile_blocked_by_snake(context, tile_obj):
             return True
         next_tail_number = next_tail_number + 1
         tail = context.global_scene.objects.get(f"tail_{next_tail_number}")
+    return False
+
+# same as 'is_tile_blocked_by_snake' it seems.... except that we exlude tail_1
+def is_tail_on_tile(context, tile, exclude_last_tail = False):
+    tile_pos = get_world_location(tile)
+    tail = context.global_scene.objects["tail_2"]
+    #print(f"--")
+    while tail is not None:
+        tail_pos = get_world_location(tail)
+        dx = abs(tile_pos.x - tail_pos.x)
+        dy = abs(tile_pos.y - tail_pos.y)
+        dist = math.hypot(dx, dy)
+        #print(f"dist from '{tile.name}' to '{tail.name}': '{dist}'")
+        tail_number = get_tail_number(tail.name)
+        tail = context.global_scene.objects.get(f"tail_{(tail_number+1)}")
+        if dist < 0.3:
+            if exclude_last_tail:
+                if tail is None:
+                    return False
+            return True
     return False
 
 def swap_tiles(context, tile_obj_a, tile_obj_b):
@@ -1543,6 +1549,7 @@ def get_state_at_snake_head(context: SceneContext):
         return None
     play_board = find_recursive(context, context, "play_board")
     tile        = get_tile_at_pos(context, snake_head.matrix_world.translation + Vector(( 0,  0, 0)), 2, play_board)
+    #print(f"Reset tile: {tile.name}, for pos: {snake_head.location.x}, {snake_head.location.y}")
     tile_north  = get_tile_at_pos(context, snake_head.matrix_world.translation + Vector((-1,  0, 0)), 2, play_board)
     tile_south  = get_tile_at_pos(context, snake_head.matrix_world.translation + Vector(( 1,  0, 0)), 2, play_board)
     tile_west   = get_tile_at_pos(context, snake_head.matrix_world.translation + Vector(( 0, -1, 0)), 2, play_board)
@@ -1747,13 +1754,32 @@ def do_snake_tail_action(context, source, tail, action, duration_num_frames = 20
         do_snake_tail_action(context, tail, next_tail, action, duration_num_frames)
 
 def do_snake_action(context, action, duration_num_frames = 20):
+    play_board = find_recursive(context, context, "play_board")
     snake_head = get_snake_head(context)
+
+    head_pos = get_world_location(snake_head)
+    dir_x, dir_y = action_to_dir(action)
+    ending_pos = head_pos + Vector((-dir_x, -dir_y, 0))
+
+    #head_world = snake_head.matrix_world.translation
+    #dir_x, dir_y = action_to_dir(action)
+    #ending_pos = head_world + mathutils.Vector((dir_x, dir_y, 0))
+    ending_tile = get_tile_at_pos(context, ending_pos, 2, play_board)
+    results_in_fail = False
+    if ending_tile is not None:
+        results_in_fail = is_penalty_tile(context, ending_tile, True, True)
+
+    target_tile = get_tile_at_pos(context, ending_pos)
     snake_head["action_frame_start"] = context.frame_current
     snake_head["action_frame_end"] = context.frame_current + duration_num_frames
     snake_head["action_starting_pos_x"] = round(snake_head.location.x)
     snake_head["action_starting_pos_y"] = round(snake_head.location.y)
     snake_head["action_starting_pos_z"] = round(snake_head.location.z)
     snake_head["action_starting_rot_z"] = snake_head.rotation_euler.z
+    #print("ending tile:...")
+    if ending_tile is not None:
+        #print(f"ending tile: {ending_tile.name}. results in fail: {results_in_fail}")
+        snake_head["action_results_in_fail"] = results_in_fail
     snake_head["action_action"] = action
     do_snake_tail_action(context, snake_head, context.global_scene.objects["tail_1"], action, duration_num_frames)
 
@@ -2067,6 +2093,9 @@ def handle_snake_action(context):
 
     start_frame = snake_head["action_frame_start"]
     end_frame = snake_head["action_frame_end"]
+    results_in_fail = False
+    if "action_results_in_fail" in snake_head:
+        results_in_fail = snake_head["action_results_in_fail"]
     if end_frame > (start_frame+1):
         end_frame = end_frame-1
     starting_pos_x = snake_head["action_starting_pos_x"]
@@ -2092,6 +2121,11 @@ def handle_snake_action(context):
     delta = target_rot_z - starting_rot_z
     delta = (delta + math.pi) % (2 * math.pi) - math.pi
     snake_head.rotation_euler.z = starting_rot_z + delta * rotate_anim
+
+    # shake anim if crashing into something
+    if results_in_fail:
+        snake_head.location.x = snake_head.location.x + math.sin(total_anim * math.pi * 7.0) * 0.12
+        snake_head.location.y = snake_head.location.y + math.sin(total_anim * math.pi * 8.0) * 0.12
 
     #target_rot_z = math.atan2(dir_y, dir_x) + math.pi
     #snake_head.rotation_euler.z = starting_rot_z + (target_rot_z - starting_rot_z) * rotate_anim
