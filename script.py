@@ -529,7 +529,7 @@ def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_in
     if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
         tile_current  = get_tile_at_guy(context)
         tile_previous = get_guy_prev_tile(context)
-        penalty_or_reward = get_tile_penalty_or_reward(context, tile_current)
+        penalty_or_reward = get_tile_penalty_or_reward(context, tile_current, False)
         if penalty_or_reward != 0:
             prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
             add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward)
@@ -542,7 +542,7 @@ def check_set_quality_by_poke_from_action(context, total_duration_num_frames, ch
     if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
         tile_current = get_tile_at_snake_head(context)
         tile_previous = get_guy_prev_action_tile(context)
-        penalty_or_reward = get_tile_penalty_or_reward(context, tile_current)
+        penalty_or_reward = get_tile_penalty_or_reward(context, tile_current, True)
         if penalty_or_reward != 0:
             prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
             add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward)
@@ -664,10 +664,12 @@ def check_snake_action(context, total_duration_num_frames, check_frame_index, ch
         action = guy["jump_to_action_result"]
         do_snake_action(context, action, check_duration_num_frames)
 
-def get_tile_penalty(context, tile):
+def get_tile_penalty(context, tile, has_snake):
     pen_match = re.search(r"_pen(\d+)", tile.name)
     if pen_match:
         return int(pen_match.group(1))
+    if has_snake and is_tail_on_tile(context, tile):
+        return 1
     return 0
 
 def get_tile_reward(context, tile):
@@ -696,10 +698,26 @@ def get_tile_reward(context, tile):
 
     return 0
 
-def get_tile_penalty_or_reward(context, tile):
-    penalty = get_tile_penalty(context, tile)
+def get_tile_penalty_or_reward(context, tile, has_snake):
+    penalty = get_tile_penalty(context, tile, has_snake)
     reward = get_tile_reward(context, tile)
     return reward - penalty
+
+def is_tail_on_tile(context, tile):
+    tile_pos = get_world_location(tile)
+    tail = context.global_scene.objects["tail_2"]
+    print(f"--")
+    while tail is not None:
+        tail_pos = get_world_location(tail)
+        dx = abs(tile_pos.x - tail_pos.x)
+        dy = abs(tile_pos.y - tail_pos.y)
+        dist = math.hypot(dx, dy)
+        print(f"dist from '{tile.name}' to '{tail.name}': '{dist}'")
+        if dist < 0.3:
+            return True
+        tail_number = get_tail_number(tail.name)
+        tail = context.global_scene.objects.get(f"tail_{(tail_number+1)}")
+    return False
 
 def check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_index, check_duration_num_frames, as_snake):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -709,7 +727,7 @@ def check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_
         else:
             tile = get_tile_at_guy(context)
         #print(f"Checking tile {tile.name}")
-        penalty = get_tile_penalty(context, tile)
+        penalty = get_tile_penalty(context, tile, as_snake)
         reward = get_tile_reward(context, tile)
         if penalty > 0:
             penelize_guy(context, penalty)
@@ -717,6 +735,9 @@ def check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_
             reward_guy(context, reward)
         if name_contains_key(tile.name, "lose"):
             lose_guy(context, check_duration_num_frames)
+        if as_snake:
+            if is_tail_on_tile(context, tile):
+                lose_guy(context, check_duration_num_frames)
         if name_contains_key(tile.name, "win"):
             win_guy(context, check_duration_num_frames)
             if as_snake:
@@ -751,11 +772,14 @@ def check_action_end_snake(context, total_duration_num_frames, check_frame_index
 
 def guy_got_reward_or_penalty(context, check_snake_if_exists):
     tile = None
+    has_snake = False
     if check_snake_if_exists:
         tile = get_tile_at_snake_head(context)
+        if tile is not None:
+            has_snake = True
     if tile is None:
         tile = get_tile_at_guy(context)
-    return get_tile_penalty_or_reward(context, tile) != 0
+    return get_tile_penalty_or_reward(context, tile, has_snake) != 0
 
 def get_target_rotation(context):
     num_actions_done = get_num_actions_done(context)
@@ -1417,10 +1441,15 @@ def throw_dice(context, duration_num_frames):
     dice["end_throw_frame"] = context.frame_current + duration_num_frames
     dice["ends_at_spin"] = random.randint(1, 6) == 1
 
-def is_penalty_tile(tile_obj):
+def is_penalty_tile(context, tile_obj, has_snake):
     if tile_obj is None:
         return True
-    return "_pen" in tile_obj.name
+    if "_pen" in tile_obj.name:
+        return True
+    if has_snake:
+        if is_tail_on_tile(context, tile_obj):
+            return True
+    return False
 
 def extend_snake(context, duration_num_frames):
     tail = context.global_scene.objects["tail_1"]
@@ -1522,11 +1551,11 @@ def get_state_at_snake_head(context: SceneContext):
     snake_head_pos = get_world_location(snake_head)
     apple_tile_pos = get_world_location(apple.parent)
 
-    tile_penalty       = is_penalty_tile(tile)
-    tile_north_penalty = is_penalty_tile(tile_north)
-    tile_south_penalty = is_penalty_tile(tile_south)
-    tile_west_penalty  = is_penalty_tile(tile_west)
-    tile_east_penalty  = is_penalty_tile(tile_east)
+    tile_penalty       = is_penalty_tile(context, tile, True)
+    tile_north_penalty = is_penalty_tile(context, tile_north, True)
+    tile_south_penalty = is_penalty_tile(context, tile_south, True)
+    tile_west_penalty  = is_penalty_tile(context, tile_west, True)
+    tile_east_penalty  = is_penalty_tile(context, tile_east, True)
 
     walls_state = 0
     if tile_north_penalty:
