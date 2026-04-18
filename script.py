@@ -43,7 +43,7 @@ FLIPPER_DIRECTION = 90
 
 
 class SceneContext:
-    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")], spinning_wheel_scale = 1.0):
+    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")], spinning_wheel_scale = 1.0, reroll_chance = 6):
         self.scene_obj = scene_obj
         self.global_scene = scene
         self.frame_current = scene.frame_current - 3 # hacky offset, initialization stuff...
@@ -60,6 +60,7 @@ class SceneContext:
         self.chance_table = chance_table
         self.first_snake_apple_location = [Vector((3, -1.7)), Vector((4, -2.7))]
         self.spinning_wheel_scale = spinning_wheel_scale
+        self.reroll_chance = reroll_chance
 
 def render_and_save_current_frame(folder):
     scene = bpy.context.scene
@@ -94,7 +95,7 @@ def handle_frame(scene):
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
         ("scene9", ((170), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((120, 120, 120, 210, 120), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3)),
+        ("scene11", ((120, 120, 120, 210, 120), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10)),
     ]
 
     config = next((cfg for cfg in configs_candidates if cfg[0] == ACTIVE_SCENE), None)
@@ -1413,7 +1414,7 @@ def get_dice_from_guy(context, guy, auto_create = True):
 def get_dice(context, auto_create = True):
     return get_dice_from_guy(context, get_guy(context), auto_create)
 
-def throw_dice(context, duration_num_frames):
+def throw_dice(context: SceneContext, duration_num_frames):
     guy = get_guy(context)
     dice = get_dice_from_guy(context, guy)
     random.seed(context.frame_current * 1523)
@@ -1425,7 +1426,7 @@ def throw_dice(context, duration_num_frames):
     dice["start_throw_frame"] = context.frame_current
     guy["start_throw_frame"] = context.frame_current # also apply on guy since reading from that is faster
     dice["end_throw_frame"] = context.frame_current + duration_num_frames
-    dice["ends_at_spin"] = random.randint(1, 6) == 1
+    dice["ends_at_spin"] = random.randint(1, context.reroll_chance) == 1
 
 def is_penalty_tile(context, tile_obj, has_snake, exclude_last_tail = False):
     if tile_obj is None:
