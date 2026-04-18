@@ -22,7 +22,7 @@ def getenv_float(name, default=0.0):
     except ValueError:
         return default
 
-debug_scene="scene10"
+debug_scene="scene11"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
@@ -43,7 +43,7 @@ FLIPPER_DIRECTION = 90
 
 
 class SceneContext:
-    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")]):
+    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")], spinning_wheel_scale = 1.0):
         self.scene_obj = scene_obj
         self.global_scene = scene
         self.frame_current = scene.frame_current - 3 # hacky offset, initialization stuff...
@@ -58,7 +58,8 @@ class SceneContext:
         self.quality_bleeds_over = quality_bleeds_over
         self.gamma = 0.8  # max bleedover value perc compared to neighbour
         self.chance_table = chance_table
-        self.first_snake_apple_location = [Vector((3, -1.7))]
+        self.first_snake_apple_location = [Vector((3, -1.7)), Vector((3, -2.7))]
+        self.spinning_wheel_scale = spinning_wheel_scale
 
 def render_and_save_current_frame(folder):
     scene = bpy.context.scene
@@ -87,13 +88,13 @@ def handle_frame(scene):
         ("scene2", ()),
         ("scene3", ((180, 180, 180, 180, 180), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y - 2, STARTING_GUY_POS.z)))),
         ("scene4", ((0, 0, 0, 0, 0), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + 2, STARTING_GUY_POS.z)), 0.4)),
-        ("scene5", ((180, 0, 180, 180, 180, 0, 0, 180, 0, 0, 0), STARTING_GUY_POS, 0.4)),
-        ("scene6", ((180), STARTING_GUY_POS)),
-        ("scene7", ((180), STARTING_GUY_POS, 0.3)),
+        ("scene5", ((190, 30, 150, 210, 160, 20, 40, 130, 10, 5, 35), STARTING_GUY_POS, 0.4)),
+        ("scene6", ((150), STARTING_GUY_POS)),
+        ("scene7", ((190), STARTING_GUY_POS, 0.3)),
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
-        ("scene9", ((180), STARTING_GUY_POS, 0.7, True)),
+        ("scene9", ((170), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
+        ("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3)),
     ]
 
     config = next((cfg for cfg in configs_candidates if cfg[0] == ACTIVE_SCENE), None)
@@ -247,7 +248,7 @@ def reset_scene5(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene5(context):
-    duration_multiplier = 1.0 * SPEED_MULTIPLIER
+    duration_multiplier = 0.35 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,          duration
@@ -388,7 +389,7 @@ def reset_scene10(context, first_time):
             add_quality_bar_to_spinning_wheel(context, tile)
 
 def handle_scene10(context):
-    duration_multiplier = 1.0 * SPEED_MULTIPLIER
+    duration_multiplier = 0.5 * SPEED_MULTIPLIER
 
     checks = [
         # check function name,          duration
@@ -715,6 +716,10 @@ def get_num_actions_done(context):
         return 0
     return int(context.frame_current / context.action_duration_num_frames)
 
+def get_num_wins(context):
+    guy = get_guy(context)
+    return get_property(guy, "num_wins", 0)
+
 def check_action_end(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         print(f"action {get_num_actions_done(context)} done")
@@ -923,43 +928,8 @@ def is_disk_face_part_of_section(disk, face, section_label = ""):
     return False
 
 
-def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
-    def angle(v):
-        a = math.degrees(math.atan2(v.co.y, v.co.x))
-        if a < 0:
-            a += 360
-        return a
-    
-    def material_index_from_label_object(disk_obj, label_object_name):
-        label_object = next((c for c in disk_obj.children if c.name.startswith(f"choise_{label_object_name}")), None)
-        if not label_object.material_slots:
-            return 0  # fallback if the label has no materials
-        mat_name = label_object.material_slots[0].material.name
-        for i, slot in enumerate(disk_obj.material_slots):
-            if slot.material and slot.material.name == mat_name:
-                return i
-        return 0 # fallback if not found
+def setup_spinning_wheel(context: SceneContext, spinning_wheel_obj, chance_table):
 
-    
-    # def apply_colors(disk, sections):
-    #     mesh = disk.data
-    #     bm = bmesh.new()
-    #     bm.from_mesh(mesh)
-    #     for face in bm.faces:
-    #         # Only operate on top faces (normal pointing up)
-    #         if not is_disk_face_part_of_section(disk, face):
-    #             continue
-    #
-    #         for sec in sections:
-    #             if is_disk_face_part_of_section(disk, face, sec.label):
-    #                 sec_index = material_index_from_label_object(disk, sec.label)
-    #                 if sec_index < len(mesh.materials):
-    #                     face.material_index = sec_index
-    #
-    #     bm.to_mesh(mesh)
-    #     bm.free()
-    #     mesh.update()
-        
     def add_section_bars(disk, sections):
         template = next((c for c in disk.children if c.name.startswith("bar")), None)
         if template is None:
@@ -1018,10 +988,15 @@ def setup_spinning_wheel(context, spinning_wheel_obj, chance_table):
         {"start": sec.angle_start, "end": sec.angle_end, "start_for_target": sec.angle_for_target_start, "end_for_target": sec.angle_for_target_end, "label": sec.label}
         for sec in sections
     ]
+
     reset_spinning_wheel(context, spinning_wheel_obj)
     # apply_colors(disk, sections)
     add_section_bars(disk, sections)
     add_section_labels(disk, sections)
+
+    spinning_wheel_obj = disk.parent
+    spinning_wheel_obj.scale[0] = context.spinning_wheel_scale
+    spinning_wheel_obj.scale[1] = context.spinning_wheel_scale
 
 
 def add_quality_bar_to_spinning_wheel(context, tile_obj):
@@ -1475,14 +1450,14 @@ def randomize_snake_apple_position(context: SceneContext):
     apple_tile = find_recursive(context, play_board, "apple", False, 3).parent
     tile_candidates = find_recursive_list(context, play_board, "tile_neutral", 3)
 
-    num_actions_done = get_num_actions_done(context)
+    num_wins = get_num_wins(context)
     next_location = None
     if isinstance(context.first_snake_apple_location, Vector):
-        if num_actions_done == 0:
+        if num_wins == 0:
             next_location = context.first_snake_apple_location
     else:
-        if num_actions_done < len(context.first_snake_apple_location):
-            next_location = context.first_snake_apple_location[num_actions_done]
+        if num_wins < len(context.first_snake_apple_location):
+            next_location = context.first_snake_apple_location[num_wins]
 
     if next_location is not None:
         print(f"Setting apple to manually set position: {next_location}")
