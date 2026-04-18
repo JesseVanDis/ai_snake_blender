@@ -58,7 +58,7 @@ class SceneContext:
         self.quality_bleeds_over = quality_bleeds_over
         self.gamma = 0.8  # max bleedover value perc compared to neighbour
         self.chance_table = chance_table
-        self.first_snake_apple_location = [Vector((3, -1.7)), Vector((3, -2.7))]
+        self.first_snake_apple_location = [Vector((3, -1.7)), Vector((4, -2.7))]
         self.spinning_wheel_scale = spinning_wheel_scale
 
 def render_and_save_current_frame(folder):
@@ -94,7 +94,7 @@ def handle_frame(scene):
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
         ("scene9", ((170), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((120, 120, 120, 120, 120, 120, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3)),
+        ("scene11", ((120, 120, 210, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3)),
     ]
 
     config = next((cfg for cfg in configs_candidates if cfg[0] == ACTIVE_SCENE), None)
@@ -413,10 +413,17 @@ def handle_scene10(context):
 
 def reset_scene11(context, first_time):
     global GUY_POS_STATE_TILE_OFFSET
-    for tile in find_recursive_list(context, context, "tile_state_"):
+    state_board = find_recursive(context, context, "thinking_board")
+    #play_board = find_recursive(context, context, "play_board")
+
+    for tile in find_recursive_list(context, state_board, "tile_state_", 3):
         start_drop_down_spinning_wheel_animation(context, get_spinning_wheel_at_tile(context, tile), 0)
         if first_time:
             add_quality_bar_to_spinning_wheel(context, tile)
+
+    #for tile in find_recursive_list(context, play_board, "tile_", 3):
+    #    tile.pop("had_apple_at_action", None)  <--- apply to guy with index after all!
+
     if first_time:
         #reset_snake(context.global_scene)
         guy = get_guy(context)
@@ -544,6 +551,10 @@ def check_win_and_move_apple(context, total_duration_num_frames, check_frame_ind
         tile = get_tile_at_snake_head(context)
         apple = find_recursive(context, tile, "apple")
         if apple is not None:
+            guy = get_guy(context)
+            guy["ate_apple_at_action"] = get_num_actions_done(context)
+            guy["ate_apple_at_tile_x"] = tile.location.x
+            guy["ate_apple_at_tile_y"] = tile.location.y
             randomize_snake_apple_position(context)
 
 def check_drop_down_spinning_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
@@ -664,18 +675,23 @@ def get_tile_reward(context, tile):
         return int(rew_match.group(1))
 
     if context.quality_bleeds_over:
-        # bleed_over = True
-        # if name_contains_key(tile.name, "lose"):
-        #     bleed_over = False
-        # if name_contains_key(tile.name, "win"):
-        #     bleed_over = False
-        # if bleed_over:
         disk = get_disk(context, tile)
         if disk:
             disk_sections = get_disk_sections(context, tile)
             disk_sections.sort(key=lambda s: s.quality, reverse=True)
             best_section = disk_sections[0]
             return best_section.quality * context.gamma
+
+    guy = get_guy(context)
+    ate_apple_at_action = get_property(guy, "ate_apple_at_action", -1)
+    #print(f"ate_apple_at_action: {ate_apple_at_action} | num actions done: {get_num_actions_done(context)}")
+    if ate_apple_at_action == get_num_actions_done(context):
+        apple_tile_x = get_property(guy, "ate_apple_at_tile_x", -1)
+        apple_tile_y = get_property(guy, "ate_apple_at_tile_y", -1)
+        tile_had_apple = abs(tile.location.x - apple_tile_x) < EPS and abs(tile.location.y - apple_tile_y) < EPS
+        #print(f"tile has apple: {tile_had_apple}")
+        if tile_had_apple:
+            return 1
 
     return 0
 
@@ -770,6 +786,10 @@ def reset(context):
     guy.pop("start_closely_look_frame", None)
     guy.pop("win_frame", None)
     guy.pop("start_throw_frame", None)
+    guy.pop("ate_apple_at_action", None)
+    guy.pop("ate_apple_at_tile_x", None)
+    guy.pop("ate_apple_at_tile_y", None)
+
     reset_guy_arms(context, guy)
 
     dice_sub_base = find_recursive(context, get_guy(context), "dice_sub_base")
