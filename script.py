@@ -94,7 +94,7 @@ def handle_frame(scene):
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
         ("scene9", ((170), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((120, 120, 210, 120), Vector((11.2696, 14, 1.07769)), 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3)),
+        ("scene11", ((120, 120, 120, 210, 120), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3)),
     ]
 
     config = next((cfg for cfg in configs_candidates if cfg[0] == ACTIVE_SCENE), None)
@@ -450,7 +450,8 @@ def handle_scene11(context):
         ("check_win_and_move_apple",              5),
         ("check_set_quality_by_poke_from_action", 10),
         ("check_jump_to_state_guy",               40),
-        # ("check_set_quality_by_poke",           10),
+        ("check_reward_or_penalty",               2),
+        ("check_set_quality_by_poke",             10),
         ("check_pause",                           4),
         ("check_action_end_snake",                1)
     ]
@@ -522,7 +523,7 @@ def handle(context):
 
 def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
-        if guy_got_reward_or_penalty(context):
+        if guy_got_reward_or_penalty(context, False):
             poke_guy_prev_tile(context, check_duration_num_frames)
 
     if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
@@ -531,11 +532,11 @@ def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_in
         penalty_or_reward = get_tile_penalty_or_reward(context, tile_current)
         if penalty_or_reward != 0:
             prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
-            add_quality_at_disk_section(context, get_guy_prev_tile(context), prev_tile_result, penalty_or_reward)
+            add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward)
 
 def check_set_quality_by_poke_from_action(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
-        if guy_got_reward_or_penalty(context):
+        if guy_got_reward_or_penalty(context, True):
             poke_guy_prev_tile(context, check_duration_num_frames)
 
     if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
@@ -748,8 +749,10 @@ def check_action_end_snake(context, total_duration_num_frames, check_frame_index
         if guy_lost(context):
             reset(context)
 
-def guy_got_reward_or_penalty(context):
-    tile = get_tile_at_snake_head(context)
+def guy_got_reward_or_penalty(context, check_snake_if_exists):
+    tile = None
+    if check_snake_if_exists:
+        tile = get_tile_at_snake_head(context)
     if tile is None:
         tile = get_tile_at_guy(context)
     return get_tile_penalty_or_reward(context, tile) != 0
@@ -1541,23 +1544,11 @@ def get_state_at_snake_head(context: SceneContext):
         dir = (apple_tile_pos - snake_head_pos) / apple_dist
         dir_2d = Vector((dir.x, dir.y))
 
-        if dir_2d.x < -0.65:
-            apple_dir_state = 0
-        if dir_2d.x < -0.35 and dir_2d.y >  0.35:
-            apple_dir_state = 1
-        if dir_2d.y >  0.65:
-            apple_dir_state = 2
-        if dir_2d.x >  0.35 and dir_2d.y >  0.35:
-            apple_dir_state = 3
-        if dir_2d.x >  0.65:
-            apple_dir_state = 4
-        if dir_2d.x >  0.35 and dir_2d.y < -0.35:
-            apple_dir_state = 5
-        if dir_2d.y < -0.65:
-            apple_dir_state = 6
-        if dir_2d.x < -0.35 and dir_2d.y < -0.35:
-            apple_dir_state = 7
-        #print(f"a{apple_dir_state} | dir: [{dir_2d.x}, {dir_2d.y}] | angle: {round((math.degrees(math.atan2(dir_2d.y, dir_2d.x) / 360)) * 8)}")
+         #a6 | dir: [0.6961224675178528, -0.6961218118667603] | angle: -1
+        angle = math.atan2(dir_2d.y, dir_2d.x)
+        apple_dir_state = round(-((angle / (math.pi / 4)) + 4)) % 8
+
+        # print(f"a{apple_dir_state} | dir: [{dir_2d.x}, {dir_2d.y}] | angle: {angle}")
     else:
         print("apple_dist should not be 0!")
 
@@ -1637,7 +1628,13 @@ def reward_guy(context, num_reward):
 def get_guy_prev_tile(context):
     guy = get_guy(context)
     prev_guy_pos = Vector((get_property(guy, "jump_starting_abs_pos_x", guy.location.x), get_property(guy, "jump_starting_abs_pos_y", guy.location.y), get_property(guy, "jump_starting_abs_pos_z", guy.location.z)))
-    return get_tile_at_pos(context, prev_guy_pos)
+    max_depth = 3
+    base_obj = context
+    thinking_board = find_recursive(context, context, "thinking_board", False, 3)
+    if thinking_board is not None:
+        base_obj = thinking_board
+        max_depth = 2
+    return get_tile_at_pos(context, prev_guy_pos, max_depth, base_obj)
 
 def get_guy_prev_action_tile(context):
     guy = get_guy(context)
