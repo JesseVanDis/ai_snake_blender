@@ -32,6 +32,7 @@ FRAME_END = getenv_int("FRAME_END", -1)
 ACTIVE_SCENE = os.getenv("ACTIVE_SCENE", "")
 RENDER_INTERVAL = getenv_int("RENDER_INTERVAL", 0)
 SPEED_MULTIPLIER = getenv_float("SPEED_MULTIPLIER", 1.0)
+CAMERA_NAME = os.getenv("CAMERA_NAME", "")
 STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
 GUY_POS_STATE_TILE_OFFSET = Vector((-0.2696, 0, 0.32991))
 ACTION_TILE_POS_Z = 0.747776
@@ -123,7 +124,11 @@ def handle_frame(scene):
             init(ctx)
 
         if len(configs) == 1:
-            camera = find_recursive(ctx, ctx, "Camera", False, 2)
+            camera = None
+            if CAMERA_NAME == "":
+                camera = find_recursive(ctx, ctx, "Camera", False, 2)
+            else:
+                camera = find_recursive(ctx, ctx, CAMERA_NAME, False, 2)
             print(f"Assigning '{camera.name}' as render camera")
             bpy.context.scene.camera = camera
 

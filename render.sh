@@ -31,6 +31,7 @@ else
   render_interval=0
   speed_multiplier=1
   server=""
+  camera_name=""
   for arg in "$@"; do
       if [[ "$arg" == --scene=*    ]];         then scene="${arg#*=}";       fi
       if [[ "$arg" == --num_cpus=*    ]];      then num_cpus="${arg#*=}";    fi
@@ -38,10 +39,14 @@ else
       if [[ "$arg" == --end_frame=*    ]];     then end_frame="${arg#*=}";   fi
       if [[ "$arg" == --render_interval=*  ]]; then render_interval="${arg#*=}";   fi
       if [[ "$arg" == --speed_multiplier=* ]]; then speed_multiplier="${arg#*=}";   fi
+      if [[ "$arg" == --camera=*    ]];        then camera_name="${arg#*=}";       fi
       if [[ "$arg" == --server=*    ]];        then server="${arg#*=}";      fi
   done
 
   dest="$(pwd)/output/scene_${scene}"
+  if [ ! -z "${camera_name}" ]; then
+    dest="${dest}_${camera_name}"
+  fi
   if [ ! -d "${dest}" ]; then
     mkdir -p "${dest}"
   fi
@@ -93,6 +98,7 @@ else
     echo "  --end_frame=60"
     echo "  --render_interval=5"
     echo "  --speed_multiplier=0.5"
+    echo "  --camera=camera_closeup"
     exit 1
   fi
 
@@ -112,7 +118,7 @@ else
   fi
 
   cd "${script_dir}" || exit 1
-  docker run "${num_cpus_args}" -it --rm --entrypoint /bin/bash -u "$(id -u):$(id -g)" -v "${dest}:/dest" -e "ACTIVE_SCENE=scene${scene}" -e "RENDER_INTERVAL=${render_interval}" -e "SPEED_MULTIPLIER=${speed_multiplier}" -e "FRAME_START=${start_frame}" -e "FRAME_END=${end_frame}" iqip_ia_presentation_render -c "/project/render.sh entrypoint"
+  docker run "${num_cpus_args}" -it --rm --entrypoint /bin/bash -u "$(id -u):$(id -g)" -v "${dest}:/dest" -e "ACTIVE_SCENE=scene${scene}" -e "RENDER_INTERVAL=${render_interval}" -e "SPEED_MULTIPLIER=${speed_multiplier}" -e "FRAME_START=${start_frame}" -e "FRAME_END=${end_frame}" -e "CAMERA_NAME=${camera_name}" iqip_ia_presentation_render -c "/project/render.sh entrypoint"
   if [ "$?" -ne 0 ]; then
     printf "${color_red}failed to run iqip_ia_presentation_render docker ${color_reset} \n"
     exit 1
