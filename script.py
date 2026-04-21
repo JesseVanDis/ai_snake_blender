@@ -22,7 +22,7 @@ def getenv_float(name, default=0.0):
     except ValueError:
         return default
 
-debug_scene="scene11"
+debug_scene="scene5"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
@@ -93,7 +93,7 @@ def handle_frame(scene):
         ("scene4", ((0, 0, 0, 0, 0), Vector((STARTING_GUY_POS.x, STARTING_GUY_POS.y + 2, STARTING_GUY_POS.z)), 0.4)),
         ("scene5", ((190, 30, 150, 210, 160, 20, 40, 130, 10, 5, 35), STARTING_GUY_POS, 0.4)),
         ("scene6", ((150), STARTING_GUY_POS)),
-        ("scene7", ((190), STARTING_GUY_POS, 0.3)),
+        ("scene7", ((190, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 10, 10, 10), STARTING_GUY_POS, 0.2)),
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
         ("scene9", ((170), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
@@ -541,8 +541,11 @@ def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_in
         tile_previous = get_guy_prev_tile(context)
         penalty_or_reward = get_tile_penalty_or_reward(context, tile_current, False)
         if penalty_or_reward != 0:
+            color_darkness = 1
+            if penalty_or_reward > 4:
+                color_darkness = 2
             prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
-            add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward)
+            add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward, color_darkness)
 
 def check_set_quality_by_poke_from_action(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -614,7 +617,7 @@ def get_target_angle_for_section(context, disk_obj, section_label):
     disk_sections = get_disk_sections(context, disk_obj)
     for section in disk_sections:
         if section.label == section_label:
-            return ((section.angle_for_target_start + section.angle_for_target_end) / 2)
+            return (((section.angle_for_target_start + section.angle_for_target_end) / 2))-20
     return 0
 
 # random if 2 or more top qualities are equal
@@ -733,7 +736,10 @@ def check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_
             if is_tail_on_tile(context, tile):
                 lose_guy(context, check_duration_num_frames)
         if name_contains_key(tile.name, "win"):
-            win_guy(context, check_duration_num_frames)
+            win_bonus = 0
+            if reward > 3:
+                win_bonus = 4
+            win_guy(context, check_duration_num_frames, win_bonus)
             if as_snake:
                 extend_snake(context, check_duration_num_frames)
 
@@ -1064,7 +1070,7 @@ def color_disk_section(context, disk_obj, section_label, color):
     bm.free()
     mesh.update()
 
-def get_color_from_quality(quality):
+def get_color_from_quality(quality, color_darkness = 1):
     q = max(-1.0, min(1.0, quality))
     if q < 0:
         # Interpolate red -> grey
@@ -1079,6 +1085,10 @@ def get_color_from_quality(quality):
         g = 1.0 * (1 - t) + 1.0 * t  # 0.7 -> 1
         b = 0.5 * (1 - t) + 0.0 * t  # 0.7 -> 0
 
+    if color_darkness > 1:
+        r = r * 0.3
+        g = g * 0.3
+        b = b * 0.3
     return (r, g, b, 1.0)
 
 def calculate_new_quality(context, current_quality, desired_quality):
@@ -1138,7 +1148,7 @@ def get_disk_sections(context, tile_obj):
         sections_list.append(section)
     return sections_list
 
-def add_quality_at_disk_section(context, tile_obj, section_label, quality):
+def add_quality_at_disk_section(context, tile_obj, section_label, quality, color_darkness = 1):
     disk = get_disk(context, tile_obj)
     if disk is None or "sections" not in disk:
         return None
@@ -1171,7 +1181,7 @@ def add_quality_at_disk_section(context, tile_obj, section_label, quality):
                 #     quality_bar_obj["section_label"] = section_label
                 #     quality_bar_obj.location = (0, 0, 0)
                 #     quality_bar_obj.rotation_euler = (0, 0, math.radians(-90 + ((start+end)/2)))
-                color_disk_section(context, disk, label, get_color_from_quality(new_quality))
+                color_disk_section(context, disk, label, get_color_from_quality(new_quality, color_darkness))
                 break
 
 
@@ -1804,11 +1814,11 @@ def lose_guy(context, duration_num_frames = 10):
     guy["num_losses"] = get_property(guy, "num_losses", 0) + 1
     get_text_penalty(context).data.body = str(guy["num_losses"])
 
-def win_guy(context, duration_num_frames = 3):
+def win_guy(context, duration_num_frames = 3, win_bonus = 0):
     guy = get_guy(context)
     guy["win_frame"] = context.frame_current
     guy["win_frame_end"] = context.frame_current + duration_num_frames
-    guy["num_wins"] = get_property(guy, "num_wins", 0) + 1
+    guy["num_wins"] = get_property(guy, "num_wins", 0) + 1 + win_bonus
     get_text_rewards(context).data.body = str(guy["num_wins"])
 
 def guy_won(context):
