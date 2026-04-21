@@ -22,7 +22,7 @@ def getenv_float(name, default=0.0):
     except ValueError:
         return default
 
-debug_scene="scene7"
+debug_scene="scene5"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
@@ -612,7 +612,7 @@ def get_target_angle_for_section(context, disk_obj, section_label):
     disk_sections = get_disk_sections(context, disk_obj)
     for section in disk_sections:
         if section.label == section_label:
-            return ((section.angle_for_target_start + section.angle_for_target_end) / 2)
+            return (((section.angle_for_target_start + section.angle_for_target_end) / 2))-20
     return 0
 
 # random if 2 or more top qualities are equal
