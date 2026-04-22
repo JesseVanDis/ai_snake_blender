@@ -22,7 +22,7 @@ def getenv_float(name, default=0.0):
     except ValueError:
         return default
 
-debug_scene="scene5"
+debug_scene="scene11"
 
 _should_render = False
 RENDERING_ENABLED = os.getenv("RENDERING_ENABLED", "False") == "False"
@@ -36,15 +36,15 @@ CAMERA_NAME = os.getenv("CAMERA_NAME", "")
 STARTING_GUY_POS = Vector((0.316464, 0, 1.1086))
 GUY_POS_STATE_TILE_OFFSET = Vector((-0.2696, 0, 0.32991))
 ACTION_TILE_POS_Z = 0.747776
+REWARD_WHEN_CLOSER_TO_APPLE = True
 
 _frames_until_render = 0
 
 EPS = 1e-6
 FLIPPER_DIRECTION = 90
 
-
 class SceneContext:
-    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")], spinning_wheel_scale = 1.0, reroll_chance = 6, use_thick_spinning_wheel = False):
+    def __init__(self, scene, scene_obj, first_spinner_rotations = (), guy_starting_pos: Vector = STARTING_GUY_POS, quality_multiplier = 0.4, quality_bleeds_over = False, chance_table = [(0.5,  "W"), (0.5,  "E")], spinning_wheel_scale = 1.0, reroll_chance = 6, use_thick_spinning_wheel = False, reward_when_closer_to_apple = False):
         self.scene_obj = scene_obj
         self.global_scene = scene
         self.frame_current = scene.frame_current - 3 # hacky offset, initialization stuff...
@@ -63,6 +63,7 @@ class SceneContext:
         self.spinning_wheel_scale = spinning_wheel_scale
         self.reroll_chance = reroll_chance
         self.use_thick_spinning_wheel = use_thick_spinning_wheel
+        self.reward_when_closer_to_apple = reward_when_closer_to_apple
 
 def render_and_save_current_frame(folder):
     scene = bpy.context.scene
@@ -97,7 +98,7 @@ def handle_frame(scene):
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
         ("scene9", ((170), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10, True)),
+        ("scene11", ((), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10, True, REWARD_WHEN_CLOSER_TO_APPLE)),
         #("scene11", ((120, 120, 120, 210, 120), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10)),
     ]
 
@@ -534,18 +535,21 @@ def handle(context):
 def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         if guy_got_reward_or_penalty(context, False):
-            poke_guy_prev_tile(context, check_duration_num_frames)
+            if not guy_poked_tile_at_this_action(context, get_tile_at_guy(context)):
+                poke_guy_prev_tile(context, check_duration_num_frames)
 
     if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
         tile_current  = get_tile_at_guy(context)
-        tile_previous = get_guy_prev_tile(context)
-        penalty_or_reward = get_tile_penalty_or_reward(context, tile_current, False)
-        if penalty_or_reward != 0:
-            color_darkness = 1
-            if penalty_or_reward > 4:
-                color_darkness = 2
-            prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
-            add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward, color_darkness)
+        if not guy_poked_tile_at_this_action(context, tile_current):
+            tile_previous = get_guy_prev_tile(context)
+            penalty_or_reward = get_tile_penalty_or_reward(context, tile_current, False)
+            if penalty_or_reward != 0:
+                color_darkness = 1
+                if penalty_or_reward > 4:
+                    color_darkness = 2
+                prev_tile_result = get_spinning_wheel_result(context, get_spinning_wheel_at_tile(context, tile_previous))
+                #         print("Set from action!")
+                add_quality_at_disk_section(context, tile_previous, prev_tile_result, penalty_or_reward, color_darkness)
 
 def check_set_quality_by_poke_from_action(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -563,6 +567,7 @@ def check_set_quality_by_poke_from_action(context, total_duration_num_frames, ch
 def check_win_and_move_apple(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         tile = get_tile_at_snake_head(context)
+        old_tile = get_tile_at_tail1(context)
         apple = find_recursive(context, tile, "apple")
         if apple is not None:
             guy = get_guy(context)
@@ -570,6 +575,7 @@ def check_win_and_move_apple(context, total_duration_num_frames, check_frame_ind
             guy["ate_apple_at_tile_x"] = tile.location.x
             guy["ate_apple_at_tile_y"] = tile.location.y
             randomize_snake_apple_position(context)
+
 
 def check_drop_down_spinning_wheel(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
@@ -685,7 +691,7 @@ def get_tile_penalty(context, tile, has_snake):
         return 1
     return 0
 
-def get_tile_reward(context, tile):
+def get_tile_reward(context: SceneContext, tile):
     rew_match = re.search(r"_rew(\d+)", tile.name)
     if rew_match:
         return int(rew_match.group(1))
@@ -709,6 +715,12 @@ def get_tile_reward(context, tile):
         if tile_had_apple:
             return 1
 
+    if context.reward_when_closer_to_apple:
+        got_closer_to_apple_at_action = get_property(guy, "got_closer_to_apple_at_action", -1)
+        if got_closer_to_apple_at_action == get_num_actions_done(context):
+            #print("rewarding 0.1 as it got closer to apple")
+            return 0.1
+
     return 0
 
 def get_tile_penalty_or_reward(context, tile, has_snake):
@@ -723,6 +735,20 @@ def check_reward_or_penalty_ext(context, total_duration_num_frames, check_frame_
             tile = get_tile_at_snake_head(context)
         else:
             tile = get_tile_at_guy(context)
+
+        if as_snake:
+            old_tile = get_tile_at_tail1(context)
+            play_board = find_recursive(context, context, "play_board")
+            apple = find_recursive(context, play_board, "apple")
+            if apple is not None:
+                apple_tile = get_tile_at_pos(context, get_world_location(apple), 2, play_board)
+                guy = get_guy(context)
+                old_dist_to_apple = math.dist(old_tile.location, apple_tile.location)
+                new_dist_to_apple = math.dist(tile.location, apple_tile.location)
+                if new_dist_to_apple < old_dist_to_apple:
+                    guy["got_closer_to_apple_at_action"] = get_num_actions_done(context)
+                #print(f"got closer? old dist: {old_dist_to_apple}, new dist: {new_dist_to_apple}. so: {new_dist_to_apple < old_dist_to_apple}")
+
         #print(f"Checking tile {tile.name}")
         penalty = get_tile_penalty(context, tile, as_snake)
         reward = get_tile_reward(context, tile)
@@ -770,6 +796,14 @@ def check_action_end_snake(context, total_duration_num_frames, check_frame_index
         if guy_lost(context):
             reset(context)
 
+def guy_poked_tile_at_this_action(context, tile):
+    guy = get_guy(context)
+    actions_done = get_num_actions_done(context)
+    poked_at_action = get_property(guy, "poked_at_action", -1)
+    tile_name = get_property(guy, "poked_tile", "")
+    #print(f"poked: {poked_at_action}, {actions_done}, {tile_name}, {tile.name}")
+    return actions_done == poked_at_action and tile.name == tile_name
+
 def guy_got_reward_or_penalty(context, check_snake_if_exists):
     tile = None
     has_snake = False
@@ -816,6 +850,8 @@ def reset(context):
     guy.pop("ate_apple_at_action", None)
     guy.pop("ate_apple_at_tile_x", None)
     guy.pop("ate_apple_at_tile_y", None)
+    guy.pop("got_closer_to_apple_at_action", None)
+    guy.pop("poked_at_action", None)
 
     reset_guy_arms(context, guy)
 
@@ -1153,6 +1189,10 @@ def add_quality_at_disk_section(context, tile_obj, section_label, quality, color
     if disk is None or "sections" not in disk:
         return None
 
+    guy = get_guy(context)
+    guy["poked_at_action"] = get_num_actions_done(context)
+    guy["poked_tile"] = tile_obj.name
+
     create_colors = False
     if f"quality_{section_label}" not in disk:
         create_colors = True
@@ -1165,6 +1205,7 @@ def add_quality_at_disk_section(context, tile_obj, section_label, quality, color
     if create_colors:
         disk[f"quality_{section_label}"] = new_quality
         sections = disk["sections"] # list of tuples: (start_angle, end_angle, label)
+
         #print(f"Adding quality {quality} to {tile_obj.name}. new quality: {new_quality}")
         for sec in sections:
             label = sec["label"]
@@ -1669,6 +1710,14 @@ def get_tile_at_snake_head(context):
     if play_board is None:
         return None
     tile = get_tile_at_pos(context, get_world_location(snake_head), 2, play_board)
+    return tile
+
+def get_tile_at_tail1(context):
+    tail = context.global_scene.objects["tail_1"]
+    play_board = find_recursive(context, context, "play_board")
+    if play_board is None:
+        return None
+    tile = get_tile_at_pos(context, get_world_location(tail), 2, play_board)
     return tile
 
 def get_spinning_wheel_at_guy(context):
