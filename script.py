@@ -723,7 +723,7 @@ def get_tile_reward(context: SceneContext, tile):
         got_closer_to_apple_at_action = get_property(guy, "got_closer_to_apple_at_action", -1)
         if got_closer_to_apple_at_action == get_num_actions_done(context):
             #print("rewarding 0.1 as it got closer to apple")
-            return 0.1
+            return 0.01
 
     return 0
 
