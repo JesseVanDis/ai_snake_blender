@@ -98,7 +98,7 @@ def handle_frame(scene):
         ("scene8", ((), STARTING_GUY_POS, 0.3)),
         ("scene9", ((170), STARTING_GUY_POS, 0.7, True)),
         ("scene10", ((), STARTING_GUY_POS, 0.5, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")])),
-        ("scene11", ((), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10, True, REWARD_WHEN_CLOSER_TO_APPLE)),
+        ("scene11", ((280), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10, True, REWARD_WHEN_CLOSER_TO_APPLE)),
         #("scene11", ((120, 120, 120, 210, 120), Vector((11.2696, 14, 1.07769)), 0.6, True, [(0.5,  "N"), (0.5,  "E"), (0.5,  "S"), (0.5,  "W")], 1.3, 10)),
     ]
 
@@ -535,8 +535,11 @@ def handle(context):
 def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         if guy_got_reward_or_penalty(context, False):
+            snake_head = get_snake_head(context)
             if not guy_poked_tile_at_this_action(context, get_tile_at_guy(context)):
-                poke_guy_prev_tile(context, check_duration_num_frames)
+                if not snake_head and not guy_lost(context):
+                    print("check_set_quality_by_poke")
+                    poke_guy_prev_tile(context, check_duration_num_frames)
 
     if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
         tile_current  = get_tile_at_guy(context)
@@ -554,6 +557,7 @@ def check_set_quality_by_poke(context, total_duration_num_frames, check_frame_in
 def check_set_quality_by_poke_from_action(context, total_duration_num_frames, check_frame_index, check_duration_num_frames):
     if (context.frame_current % total_duration_num_frames) == check_frame_index:
         if guy_got_reward_or_penalty(context, True):
+            print("check_set_quality_by_poke_from_action")
             poke_guy_prev_tile(context, check_duration_num_frames)
 
     if (context.frame_current % total_duration_num_frames) == int(check_frame_index + check_duration_num_frames/2):
@@ -801,7 +805,7 @@ def guy_poked_tile_at_this_action(context, tile):
     actions_done = get_num_actions_done(context)
     poked_at_action = get_property(guy, "poked_at_action", -1)
     tile_name = get_property(guy, "poked_tile", "")
-    #print(f"poked: {poked_at_action}, {actions_done}, {tile_name}, {tile.name}")
+    print(f"poked: {poked_at_action}, {actions_done}, {tile_name}, {tile.name}")
     return actions_done == poked_at_action and tile.name == tile_name
 
 def guy_got_reward_or_penalty(context, check_snake_if_exists):
